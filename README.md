@@ -41,7 +41,7 @@ Works the same in VS Code forks (Antigravity IDE, Cursor, VSCodium). From a shel
 "/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --extensionDevelopmentPath="$PWD" "$PWD/fixtures"
 ```
 
-If the IDE is already running, the currently focused window reloads as the dev host. `fixtures/scratch.dbgnb` is a ready-made notebook to open once paused.
+If the IDE is already running, the currently focused window reloads as the dev host. If the packaged extension is also installed, add `--disable-extension=mrmobiustrip.debug-notebook` (the F5 config does), otherwise both copies load and toolbar buttons appear twice. `fixtures/scratch.dbgnb` is a ready-made notebook to open once paused.
 
 Walkthrough:
 

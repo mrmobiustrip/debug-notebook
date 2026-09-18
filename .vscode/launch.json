@@ -5,8 +5,14 @@
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/fixtures"],
-      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--disable-extension=mrmobiustrip.debug-notebook",
+        "${workspaceFolder}/fixtures"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/dist/**/*.js"
+      ],
       "preLaunchTask": "npm: build"
     }
   ]
