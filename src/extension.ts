@@ -175,12 +175,15 @@ export function activate(context: vscode.ExtensionContext): void {
     const cell = notebook.cellAt(index);
     const range = new vscode.NotebookRange(index, index + 1);
     const uri = notebook.uri.toString();
-    let nbEditor = vscode.window.visibleNotebookEditors.find((e) => e.notebook.uri.toString() === uri);
-    if (!nbEditor) {
-      nbEditor = await vscode.window.showNotebookDocument(notebook, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
-    }
+    const visible = vscode.window.visibleNotebookEditors.find((e) => e.notebook.uri.toString() === uri);
+    // Move focus to the notebook and put the caret in the new cell.
+    const nbEditor = await vscode.window.showNotebookDocument(notebook, {
+      viewColumn: visible?.viewColumn ?? vscode.ViewColumn.Beside,
+      preserveFocus: false,
+    });
     nbEditor.selections = [range];
     nbEditor.revealRange(range, vscode.NotebookEditorRevealType.InCenter);
+    await vscode.commands.executeCommand('notebook.cell.edit');
     await controller.executeCells([cell], notebook);
   };
 
