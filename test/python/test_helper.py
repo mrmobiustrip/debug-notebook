@@ -110,6 +110,13 @@ class BundleTests(unittest.TestCase):
     def test_no_args_no_figures(self):
         self.assertEqual(unpack(H.bundle())["outputs"], [])
 
+    def test_last_object_kept_for_inspection(self):
+        obj = object()
+        H.bundle(obj)
+        self.assertIs(H._last, obj)
+        H.bundle()
+        self.assertIsNone(H._last)
+
     def test_broken_formatter_does_not_fail(self):
         out = unpack(H.bundle(Weird()))["outputs"][0]
         self.assertEqual(out, {"text/markdown": "**md**", "text/plain": "<Weird>"})

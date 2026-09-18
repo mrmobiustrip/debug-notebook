@@ -1,18 +1,22 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { SessionRegistry } from './session/SessionRegistry';
+import { SessionRegistry, SessionState } from './session/SessionRegistry';
 import { TargetResolver } from './session/TargetResolver';
 import { ProfileRegistry } from './profiles';
 import { PythonProfile } from './profiles/PythonProfile';
-import { DapCompletionProvider } from './notebook/Completions';
 import { languageForSessionType } from './profiles/LanguageProfile';
 import { OutputRouter } from './notebook/OutputRouter';
 import { DebugNotebookController } from './notebook/Controller';
 import { DebugNotebookSerializer } from './notebook/Serializer';
 import { RunStatusProvider } from './notebook/StatusBar';
+import { DapCompletionProvider } from './notebook/Completions';
+import { VariableService } from './notebook/VariableService';
+import { AUTO_RUN_KEY, WatchScheduler, isAutoRun } from './notebook/WatchScheduler';
 import { RUN_METADATA_KEY } from './notebook/Staleness';
 import { NOTEBOOK_TYPE } from './notebook/constants';
+
+const config = () => vscode.workspace.getConfiguration('debugNotebook');
 
 export function activate(context: vscode.ExtensionContext): void {
   const registry = new SessionRegistry();
@@ -21,8 +25,8 @@ export function activate(context: vscode.ExtensionContext): void {
   profiles.register(
     new PythonProfile({
       helperSource: fs.readFileSync(path.join(context.extensionPath, 'dist', 'helper.py'), 'utf8'),
-      maxBundleBytes: () =>
-        vscode.workspace.getConfiguration('debugNotebook').get<number>('python.maxBundleBytes', 10 * 1024 * 1024),
+      maxBundleBytes: () => config().get<number>('python.maxBundleBytes', 10 * 1024 * 1024),
+      inspector: () => config().get<boolean>('python.inspector', true),
     }),
   );
   const router = new OutputRouter(registry.onOutput);
@@ -34,19 +38,56 @@ export function activate(context: vscode.ExtensionContext): void {
     return session ? languageForSessionType(session.type) : 'python';
   };
 
+  /** Most recently focused debug notebook, for send-selection. */
+  let lastNotebook: vscode.NotebookDocument | undefined;
+  const trackNotebook = (editor: vscode.NotebookEditor | undefined) => {
+    if (editor?.notebook.notebookType === NOTEBOOK_TYPE) {
+      lastNotebook = editor.notebook;
+    }
+  };
+  trackNotebook(vscode.window.activeNotebookEditor);
+
+  const pinOf = (notebook: vscode.NotebookDocument): string | undefined =>
+    (notebook.metadata?.debugNotebook as { pinnedSession?: string } | undefined)?.pinnedSession;
+
+  const notebooksFor = (state: SessionState): vscode.NotebookDocument[] =>
+    vscode.workspace.notebookDocuments.filter((doc) => {
+      if (doc.notebookType !== NOTEBOOK_TYPE) {
+        return false;
+      }
+      const pin = pinOf(doc);
+      return pin ? pin === state.session.name : vscode.debug.activeDebugSession?.id === state.session.id;
+    });
+
+  const watcher = new WatchScheduler(registry, {
+    notebooksFor,
+    isBusy: (id) => controller.isBusy(id),
+    execute: (cells, notebook) => controller.executeCells(cells, notebook),
+  });
+
   context.subscriptions.push(
     registry,
     router,
     controller,
     statusBar,
+    watcher,
+    new VariableService(registry),
     new DapCompletionProvider(registry),
     controller.onDidWriteMetadata(() => statusBar.refresh()),
+    vscode.window.onDidChangeActiveNotebookEditor(trackNotebook),
+    vscode.workspace.onDidCloseNotebookDocument((doc) => {
+      if (lastNotebook === doc) {
+        lastNotebook = undefined;
+      }
+    }),
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, new DebugNotebookSerializer(activeLanguage), {
       // Run metadata is a snapshot of a live session; never persist it and
       // never let it dirty the document.
       transientCellMetadata: { [RUN_METADATA_KEY]: true },
     }),
+
     vscode.commands.registerCommand('debugNotebook.openScratch', () => openScratch(activeLanguage())),
+
     vscode.commands.registerCommand('debugNotebook.rerunStale', async () => {
       const editor = vscode.window.activeNotebookEditor;
       if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
@@ -60,12 +101,101 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       await controller.executeCells(stale, editor.notebook);
     }),
+
+    vscode.commands.registerCommand('debugNotebook.toggleAutoRun', async (arg?: vscode.NotebookCell | { notebookEditor?: unknown }) => {
+      const cells = resolveCells(arg);
+      if (!cells.length) {
+        return;
+      }
+      const turningOn = cells.some((c) => !isAutoRun(c));
+      if (turningOn && !context.workspaceState.get<boolean>('watchWarningShown')) {
+        await context.workspaceState.update('watchWarningShown', true);
+        void vscode.window.showWarningMessage(
+          'Watch cells re-run on every stop of the debuggee. Any side effects in the cell repeat each time.',
+        );
+      }
+      const edit = new vscode.WorkspaceEdit();
+      for (const cell of cells) {
+        const existing = (cell.metadata?.[AUTO_RUN_KEY] as Record<string, unknown> | undefined) ?? {};
+        edit.set(cell.notebook.uri, [
+          vscode.NotebookEdit.updateCellMetadata(cell.index, {
+            ...cell.metadata,
+            [AUTO_RUN_KEY]: { ...existing, autoRun: turningOn },
+          }),
+        ]);
+      }
+      await vscode.workspace.applyEdit(edit);
+      statusBar.refresh();
+    }),
+
+    vscode.commands.registerCommand('debugNotebook.sendSelection', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        return;
+      }
+      const text = editor.selection.isEmpty
+        ? editor.document.lineAt(editor.selection.active.line).text
+        : editor.document.getText(editor.selection);
+      if (!text.trim()) {
+        return;
+      }
+      let notebook = lastNotebook ?? vscode.workspace.notebookDocuments.find((d) => d.notebookType === NOTEBOOK_TYPE);
+      if (!notebook) {
+        notebook = await openScratch(activeLanguage(), true);
+        lastNotebook = notebook;
+      }
+      const language = editor.document.languageId === 'plaintext' ? activeLanguage() : editor.document.languageId;
+      const index = notebook.cellCount;
+      const edit = new vscode.WorkspaceEdit();
+      edit.set(notebook.uri, [
+        vscode.NotebookEdit.insertCells(index, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code, text, language)]),
+      ]);
+      await vscode.workspace.applyEdit(edit);
+      const cell = notebook.cellAt(index);
+      const nbEditor = vscode.window.visibleNotebookEditors.find((e) => e.notebook === notebook);
+      nbEditor?.revealRange(new vscode.NotebookRange(index, index + 1), vscode.NotebookEditorRevealType.InCenterIfOutsideViewport);
+      await controller.executeCells([cell], notebook);
+    }),
+
+    vscode.commands.registerCommand('debugNotebook.pinSession', async () => {
+      const editor = vscode.window.activeNotebookEditor;
+      if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
+        void vscode.window.showInformationMessage('Focus a debug notebook first.');
+        return;
+      }
+      const sessions = registry.all().filter((s) => !s.terminated && !s.session.parentSession);
+      if (!sessions.length) {
+        void vscode.window.showInformationMessage('No debug sessions running.');
+        return;
+      }
+      const current = pinOf(editor.notebook);
+      const picks: (vscode.QuickPickItem & { name?: string })[] = [
+        { label: '$(debug-disconnect) Follow the active session', description: current ? '' : 'current', name: undefined },
+        ...sessions.map((s) => ({
+          label: `$(debug) ${s.session.name}`,
+          description: [s.session.type, s.session.name === current ? 'pinned' : ''].filter(Boolean).join(' · '),
+          name: s.session.name,
+        })),
+      ];
+      const choice = await vscode.window.showQuickPick(picks, { placeHolder: 'Pin this notebook to a debug session' });
+      if (!choice) {
+        return;
+      }
+      await setPin(editor.notebook, choice.name);
+    }),
+
+    vscode.commands.registerCommand('debugNotebook.unpinSession', async () => {
+      const editor = vscode.window.activeNotebookEditor;
+      if (editor?.notebook.notebookType === NOTEBOOK_TYPE) {
+        await setPin(editor.notebook, undefined);
+      }
+    }),
+
     vscode.debug.onDidStartDebugSession((session) => {
       if (session.parentSession) {
         return; // child sessions (e.g. debugpy subprocess) share the notebook
       }
-      const mode = vscode.workspace.getConfiguration('debugNotebook').get<string>('openOnSessionStart', 'never');
-      if (mode !== 'scratch') {
+      if (config().get<string>('openOnSessionStart', 'never') !== 'scratch') {
         return;
       }
       const alreadyOpen = vscode.workspace.notebookDocuments.some((d) => d.notebookType === NOTEBOOK_TYPE);
@@ -76,12 +206,41 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-async function openScratch(language: string): Promise<void> {
+function resolveCells(arg: unknown): vscode.NotebookCell[] {
+  if (arg && typeof arg === 'object' && 'notebook' in arg && 'index' in arg) {
+    return [arg as vscode.NotebookCell];
+  }
+  const editor = vscode.window.activeNotebookEditor;
+  if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
+    return [];
+  }
+  return editor.selections.flatMap((r) => editor.notebook.getCells(r));
+}
+
+async function setPin(notebook: vscode.NotebookDocument, name: string | undefined): Promise<void> {
+  const existing = (notebook.metadata?.debugNotebook as Record<string, unknown> | undefined) ?? {};
+  const debugNotebook = { ...existing };
+  if (name) {
+    debugNotebook.pinnedSession = name;
+  } else {
+    delete debugNotebook.pinnedSession;
+  }
+  const edit = new vscode.WorkspaceEdit();
+  edit.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({ ...notebook.metadata, debugNotebook })]);
+  await vscode.workspace.applyEdit(edit);
+  void vscode.window.setStatusBarMessage(
+    name ? `Debug Notebook: pinned to "${name}"` : 'Debug Notebook: following the active session',
+    3000,
+  );
+}
+
+async function openScratch(language: string, preserveFocus = false): Promise<vscode.NotebookDocument> {
   const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', language);
   const data = new vscode.NotebookData([cell]);
   data.metadata = { debugNotebook: {} };
   const doc = await vscode.workspace.openNotebookDocument(NOTEBOOK_TYPE, data);
-  await vscode.window.showNotebookDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false });
+  await vscode.window.showNotebookDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus });
+  return doc;
 }
 
 export function deactivate(): void {

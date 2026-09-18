@@ -2,15 +2,9 @@ import * as vscode from 'vscode';
 import { evaluate } from '../session/Dap';
 import { ExecCtx, LanguageProfile, languageForSessionType } from './LanguageProfile';
 
-export const VARIABLE_MIME = 'application/vnd.debug-notebook.variable+json';
+import { VARIABLE_MIME, VariableHandle } from '../renderer/protocol';
 
-export interface VariableHandle {
-  sessionId: string;
-  stopSeq: number;
-  variablesReference: number;
-  result: string;
-  type?: string;
-}
+export { VARIABLE_MIME };
 
 /**
  * One `evaluate` with `context: 'repl'`. Works with any adapter and already
@@ -28,8 +22,9 @@ export class GenericProfile implements LanguageProfile {
   }
 
   async execute(ctx: ExecCtx, source: string): Promise<vscode.NotebookCellOutput[]> {
-    const { session, frameId, stopSeq } = ctx.target;
+    const { session, frameId, state } = ctx.target;
     const body = await evaluate(session, { expression: source, frameId, context: 'repl' });
+    const stopSeq = state.stopSeq;
     if (ctx.token.isCancellationRequested) {
       return [];
     }
@@ -46,6 +41,8 @@ export class GenericProfile implements LanguageProfile {
         variablesReference: body.variablesReference,
         result: body.result,
         type: body.type,
+        indexedVariables: body.indexedVariables,
+        namedVariables: body.namedVariables,
       };
       items.push(vscode.NotebookCellOutputItem.json(handle, VARIABLE_MIME));
     }

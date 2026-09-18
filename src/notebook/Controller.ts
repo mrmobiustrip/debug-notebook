@@ -56,6 +56,15 @@ export class DebugNotebookController implements vscode.Disposable {
     return this.queue;
   }
 
+  /** True while a cell is executing against the given session. */
+  isBusy(sessionId?: string): boolean {
+    const c = this.current;
+    if (!c) {
+      return false;
+    }
+    return sessionId === undefined || c.sessionId === undefined || c.sessionId === sessionId;
+  }
+
   staleCells(notebook: vscode.NotebookDocument): vscode.NotebookCell[] {
     return notebook.getCells().filter((cell) => {
       const meta = readRunMetadata(cell.metadata);

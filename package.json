@@ -15,7 +15,8 @@
   ],
   "activationEvents": [
     "onNotebook:debug-notebook",
-    "onDebug"
+    "onDebug",
+    "onRenderer:debug-notebook.variable"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -40,6 +41,29 @@
         "command": "debugNotebook.rerunStale",
         "title": "Re-run Stale Cells",
         "category": "Debug Notebook"
+      },
+      {
+        "command": "debugNotebook.toggleAutoRun",
+        "title": "Toggle Watch (re-run on every stop)",
+        "category": "Debug Notebook",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "debugNotebook.sendSelection",
+        "title": "Send Selection to Debug Notebook",
+        "category": "Debug Notebook"
+      },
+      {
+        "command": "debugNotebook.pinSession",
+        "title": "Pin to Debug Session\u2026",
+        "category": "Debug Notebook",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "debugNotebook.unpinSession",
+        "title": "Unpin Debug Session",
+        "category": "Debug Notebook",
+        "icon": "$(pinned)"
       }
     ],
     "menus": {
@@ -47,6 +71,43 @@
         {
           "command": "debugNotebook.rerunStale",
           "when": "notebookType == debug-notebook"
+        },
+        {
+          "command": "debugNotebook.toggleAutoRun",
+          "when": "notebookType == debug-notebook"
+        },
+        {
+          "command": "debugNotebook.pinSession",
+          "when": "notebookType == debug-notebook"
+        },
+        {
+          "command": "debugNotebook.unpinSession",
+          "when": "notebookType == debug-notebook"
+        },
+        {
+          "command": "debugNotebook.sendSelection",
+          "when": "inDebugMode && editorTextFocus"
+        }
+      ],
+      "notebook/cell/title": [
+        {
+          "command": "debugNotebook.toggleAutoRun",
+          "when": "notebookType == debug-notebook && notebookCellType == code",
+          "group": "inline@1"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "debugNotebook.pinSession",
+          "when": "notebookType == debug-notebook",
+          "group": "navigation@10"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "debugNotebook.sendSelection",
+          "when": "inDebugMode",
+          "group": "debug@1"
         }
       ]
     },
@@ -73,9 +134,33 @@
           "default": 10485760,
           "minimum": 1024,
           "description": "Maximum size of a rich output bundle from a Python cell. Larger MIME items are dropped, largest first, and noted in the text output."
+        },
+        "debugNotebook.python.inspector": {
+          "type": "boolean",
+          "default": true,
+          "description": "After a Python cell's trailing expression, add an expandable variable tree for the resulting object (uses DAP variables requests)."
         }
       }
-    }
+    },
+    "notebookRenderer": [
+      {
+        "id": "debug-notebook.variable",
+        "displayName": "Debug Variable Tree",
+        "entrypoint": "./dist/renderer.js",
+        "mimeTypes": [
+          "application/vnd.debug-notebook.variable+json"
+        ],
+        "requiresMessaging": "optional"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "debugNotebook.sendSelection",
+        "key": "ctrl+alt+enter",
+        "mac": "cmd+alt+enter",
+        "when": "inDebugMode && editorTextFocus"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.mjs",
@@ -89,6 +174,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.90.0",
+    "@types/vscode-notebook-renderer": "^1.72.4",
     "@vscode/debugprotocol": "^1.68.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.0",

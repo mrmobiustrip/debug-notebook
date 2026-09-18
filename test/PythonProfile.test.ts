@@ -47,8 +47,8 @@ function fakeTarget(script: Script, caps: Record<string, boolean> = {}): { targe
 
 const token = { isCancellationRequested: false } as vscode.CancellationToken;
 
-function profile(): PythonProfile {
-  return new PythonProfile({ helperSource: HELPER, maxBundleBytes: () => 1000 });
+function profile(inspector = false): PythonProfile {
+  return new PythonProfile({ helperSource: HELPER, maxBundleBytes: () => 1000, inspector: () => inspector });
 }
 
 describe('PythonProfile', () => {
@@ -161,6 +161,30 @@ describe('PythonProfile', () => {
     expect(err.name).toBe('ZeroDivisionError');
     expect(err.message).toBe('division by zero');
     expect(err.traceback).toContain('Traceback');
+  });
+
+  it('appends a variable-tree output for the trailing expression when the inspector is on', async () => {
+    const { target, calls } = fakeTarget((expr) => {
+      if (expr.startsWith('(lambda m:')) return '';
+      if (expr.includes('.split(')) return pack({ body: null, last_expr: 'obj' }).packed;
+      if (expr.includes('.bundle(')) return pack({ outputs: [{ 'text/plain': '<obj>' }] }).packed;
+      throw new Error('unexpected ' + expr);
+    });
+    // _last evaluate returns a reference
+    target.session.customRequest = async (_c: string, args: { expression: string }) => {
+      calls.push([args.expression, 'repl']);
+      if (args.expression.endsWith('._last')) {
+        return { result: '<obj>', type: 'Thing', variablesReference: 42, namedVariables: 3 };
+      }
+      if (args.expression.startsWith('(lambda m:')) return { result: '', variablesReference: 0 };
+      if (args.expression.includes('.split(')) return { result: pack({ body: null, last_expr: 'obj' }).packed, variablesReference: 0 };
+      return { result: pack({ outputs: [{ 'text/plain': '<obj>' }] }).packed, variablesReference: 0 };
+    };
+    const out = await profile(true).execute({ target, token }, 'obj');
+    expect(out).toHaveLength(2);
+    const tree = out[1].items.find((i) => i.mime === 'application/vnd.debug-notebook.variable+json')!;
+    expect(JSON.parse(decode(tree))).toMatchObject({ sessionId: 's1', variablesReference: 42, result: '<obj>', type: 'Thing', namedVariables: 3 });
+    expect(calls.at(-1)![0]).toBe("__import__('__dbgnb')._last");
   });
 
   it('parses tracebacks and strips quotes', () => {

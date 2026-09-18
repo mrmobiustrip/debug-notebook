@@ -28,9 +28,21 @@ const ctx = await esbuild.context({
   logLevel: 'info',
 });
 
+const renderer = await esbuild.context({
+  entryPoints: ['src/renderer/index.ts'],
+  bundle: true,
+  format: 'esm',
+  platform: 'browser',
+  target: 'es2022',
+  outfile: 'dist/renderer.js',
+  sourcemap: !production,
+  minify: production,
+  logLevel: 'info',
+});
+
 if (watch) {
-  await ctx.watch();
+  await Promise.all([ctx.watch(), renderer.watch()]);
 } else {
-  await ctx.rebuild();
-  await ctx.dispose();
+  await Promise.all([ctx.rebuild(), renderer.rebuild()]);
+  await Promise.all([ctx.dispose(), renderer.dispose()]);
 }

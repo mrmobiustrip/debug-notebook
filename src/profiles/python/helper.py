@@ -29,6 +29,7 @@ DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 
 _pending = {}
 _next_id = 0
+_last = None  # object of the most recent bundle(); inspected via a DAP variablesReference
 _ipython_formatter = None
 _ipython_probed = False
 
@@ -120,9 +121,11 @@ def bundle(*args, **kwargs):
     nothing. Either way, any open matplotlib figures are appended as PNG and
     closed. Returns a packed ``{"outputs": [ {mime: data, ...}, ... ]}``.
     """
+    global _last
     max_bytes = kwargs.get("max_bytes", DEFAULT_MAX_BYTES)
     inline_limit = kwargs.get("inline_limit", INLINE_LIMIT)
     outputs = []
+    _last = args[0] if args else None
     if args:
         outputs.append(_format(args[0], max_bytes))
     outputs.extend(_figures(max_bytes))

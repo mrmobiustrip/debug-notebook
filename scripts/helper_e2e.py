@@ -164,6 +164,18 @@ def main():
     except ImportError:
         print("\n(pandas/matplotlib not in this interpreter; skipping I-L)")
 
+    # M. inspector: the helper keeps the last bundled object; its DAP reference expands lazily
+    cell("M inspector source", "info = {'items': items, 'label': label, 'nested': {'k': [1, 2, 3]}}\ninfo")
+    ref = c.ev(f"{H}._last")
+    print("   _last:", ref["result"][:60], "varRef=", ref["variablesReference"], "named=", ref.get("namedVariables"))
+    assert ref["variablesReference"] > 0
+    kids = d.request("variables", {"variablesReference": ref["variablesReference"]})["body"]["variables"]
+    print("   children:", [(k["name"], k["value"][:20], k["variablesReference"] > 0) for k in kids][:6])
+    assert any(k["name"] == "'nested'" or k["name"] == "nested" for k in kids), [k["name"] for k in kids]
+    big = c.ev(f"list(range(1000))")
+    page = d.request("variables", {"variablesReference": big["variablesReference"], "start": 990, "count": 5})["body"]["variables"]
+    print("   paging start=990 count=5 ->", [k["name"] for k in page], "(indexed=", big.get("indexedVariables"), ")")
+
     d.request("disconnect", {"terminateDebuggee": True})
     try:
         proc.wait(timeout=5)

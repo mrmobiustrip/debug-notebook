@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { evaluate } from '../session/Dap';
 import { errorMessage } from '../session/TargetResolver';
 import { CellError, ExecCtx, LanguageProfile } from './LanguageProfile';
+import { VARIABLE_MIME, VariableHandle } from '../renderer/protocol';
 
 /**
  * debugpy profile. Gives cells the Jupyter feel:
@@ -29,6 +30,8 @@ const CHUNK_CLIPBOARD = 2 * 1024 * 1024;
 export interface PythonProfileOptions {
   helperSource: string;
   maxBundleBytes: () => number;
+  /** Append an expandable variable tree for the trailing expression's object. */
+  inspector?: () => boolean;
 }
 
 interface SplitResult {
@@ -84,7 +87,46 @@ export class PythonProfile implements LanguageProfile {
     // Parenthesise so tuple/conditional expressions do not merge with kwargs.
     const bundleCall = split.last_expr ? `bundle((${split.last_expr}\n), ${kwargs})` : `bundle(${kwargs})`;
     const result = await this.callHelper<BundleResult>(ctx, bundleCall, true);
-    return result.outputs.map(toOutput);
+    const outputs = result.outputs.map(toOutput);
+
+    if (split.last_expr && (this.options.inspector?.() ?? true)) {
+      const tree = await this.inspectorOutput(ctx);
+      if (tree) {
+        outputs.push(tree);
+      }
+    }
+    return outputs;
+  }
+
+  /**
+   * The helper keeps the last bundled object in `_last`; evaluating that
+   * attribute (no side effects) yields a DAP variablesReference the tree
+   * renderer can expand lazily. Emitted as a separate output so the rich
+   * bundle keeps its own renderer.
+   */
+  private async inspectorOutput(ctx: ExecCtx): Promise<vscode.NotebookCellOutput | undefined> {
+    const { session, frameId, state } = ctx.target;
+    try {
+      const body = await evaluate(session, { expression: `${H}._last`, frameId, context: 'repl' });
+      if (!body.variablesReference) {
+        return undefined;
+      }
+      const handle: VariableHandle = {
+        sessionId: session.id,
+        stopSeq: state.stopSeq,
+        variablesReference: body.variablesReference,
+        result: body.result,
+        type: body.type,
+        indexedVariables: body.indexedVariables,
+        namedVariables: body.namedVariables,
+      };
+      return new vscode.NotebookCellOutput([
+        vscode.NotebookCellOutputItem.json(handle, VARIABLE_MIME),
+        vscode.NotebookCellOutputItem.text(body.result, 'text/plain'),
+      ]);
+    } catch {
+      return undefined;
+    }
   }
 
   // --- helper transport -----------------------------------------------------
