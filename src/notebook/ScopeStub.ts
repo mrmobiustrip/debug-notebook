@@ -25,6 +25,7 @@ export class ScopeStubUpdater implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly lastText = new Map<string, string>();
+  private chain: Promise<void> = Promise.resolve();
 
   constructor(
     registry: SessionRegistry,
@@ -61,7 +62,7 @@ export class ScopeStubUpdater implements vscode.Disposable {
     }
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      void this.refresh(state);
+      this.chain = this.chain.then(() => this.refresh(state)).catch(() => undefined);
     }, this.debounceMs);
   }
 
@@ -116,26 +117,24 @@ export class ScopeStubUpdater implements vscode.Disposable {
   private async apply(notebook: vscode.NotebookDocument, text: string, language: string): Promise<void> {
     const key = notebook.uri.toString();
     const existing = notebook.getCells().find(isStubCell);
-    if (existing) {
-      if (existing.document.getText() === text) {
-        return;
-      }
-      const edit = new vscode.WorkspaceEdit();
-      const doc = existing.document;
-      const full = new vscode.Range(0, 0, doc.lineCount, 0);
-      edit.replace(doc.uri, full, text);
-      await vscode.workspace.applyEdit(edit);
-    } else {
-      if (this.lastText.get(key) === text) {
-        return;
-      }
-      const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, text, language);
-      cell.metadata = { [STUB_KEY]: { stub: true }, inputCollapsed: true };
-      const edit = new vscode.WorkspaceEdit();
-      edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(0, [cell])]);
-      await vscode.workspace.applyEdit(edit);
+    if (existing && existing.document.getText() === text) {
+      return;
     }
-    this.lastText.set(key, text);
+    const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, text, language);
+    cell.metadata = { [STUB_KEY]: { stub: true }, inputCollapsed: true };
+    const edit = new vscode.WorkspaceEdit();
+    // Replace the whole cell rather than its text: a text edit on a cell
+    // document is unreliable across notebook implementations, a cell
+    // replacement is not.
+    edit.set(notebook.uri, [
+      existing
+        ? vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(existing.index, existing.index + 1), [cell])
+        : vscode.NotebookEdit.insertCells(0, [cell]),
+    ]);
+    const ok = await vscode.workspace.applyEdit(edit);
+    if (ok) {
+      this.lastText.set(key, text);
+    }
   }
 
   dispose(): void {
