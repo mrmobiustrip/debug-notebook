@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: sample.py",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/sample.py",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Node: sample.js",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/sample.js"
+    }
+  ]
+}

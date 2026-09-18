@@ -1,0 +1,89 @@
+{
+  "name": "debug-notebook",
+  "displayName": "Debug Notebook",
+  "description": "A notebook whose kernel is the active debug session. Cells evaluate in the selected stack frame of a paused process.",
+  "version": "0.0.1",
+  "publisher": "eyadnabeel",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Notebooks"
+  ],
+  "activationEvents": [
+    "onNotebook:debug-notebook",
+    "onDebug"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "notebooks": [
+      {
+        "type": "debug-notebook",
+        "displayName": "Debug Notebook",
+        "selector": [
+          {
+            "filenamePattern": "*.dbgnb"
+          }
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "debugNotebook.openScratch",
+        "title": "Open Scratch Notebook",
+        "category": "Debug Notebook"
+      },
+      {
+        "command": "debugNotebook.rerunStale",
+        "title": "Re-run Stale Cells",
+        "category": "Debug Notebook"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "debugNotebook.rerunStale",
+          "when": "notebookType == debug-notebook"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Debug Notebook",
+      "properties": {
+        "debugNotebook.openOnSessionStart": {
+          "type": "string",
+          "enum": [
+            "never",
+            "scratch"
+          ],
+          "default": "never",
+          "description": "Open a scratch debug notebook automatically when a debug session starts."
+        },
+        "debugNotebook.outputGraceMs": {
+          "type": "number",
+          "default": 75,
+          "minimum": 0,
+          "description": "How long (ms) to keep attributing stdout/stderr to a cell after its evaluate response arrives. Debug adapters deliver output asynchronously."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "vscode:prepublish": "npm run build -- --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/debugprotocol": "^1.68.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
