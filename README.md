@@ -41,8 +41,13 @@ Walkthrough:
    ```python
    for k, v in sorted(locals().items()):
        print(k, '=', v)
-   total * 2
    ```
+
+   Then in a second cell: `total * 2` (prints `200`).
+
+   Phase 1 caveat: debugpy runs a multi-line cell as statements and drops the
+   value of a trailing expression, so put an expression you want to see on its
+   own cell. Phase 2 fixes this with the Python helper.
 
 4. Click a different frame in the Call Stack view and re-run: the scope changes.
 5. Step over a line: the cell status flips to `○ stale — ran at sample.py:11 in compute(), 1 stop ago`.
