@@ -50,6 +50,36 @@ export function activate(context: vscode.ExtensionContext): void {
   const pinOf = (notebook: vscode.NotebookDocument): string | undefined =>
     (notebook.metadata?.debugNotebook as { pinnedSession?: string } | undefined)?.pinnedSession;
 
+  // Pin state of the active notebook: drives the toolbar icon (context key)
+  // and a window status bar item.
+  const pinStatus = vscode.window.createStatusBarItem('debugNotebook.pin', vscode.StatusBarAlignment.Left, 50);
+  pinStatus.name = 'Debug Notebook session';
+  pinStatus.command = 'debugNotebook.pinSession';
+  const updatePinUi = () => {
+    const editor = vscode.window.activeNotebookEditor;
+    if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
+      pinStatus.hide();
+      void vscode.commands.executeCommand('setContext', 'debugNotebook.pinned', false);
+      return;
+    }
+    const pin = pinOf(editor.notebook);
+    void vscode.commands.executeCommand('setContext', 'debugNotebook.pinned', !!pin);
+    if (pin) {
+      const live = registry.findByName(pin);
+      pinStatus.text = `$(pinned) ${pin}`;
+      pinStatus.tooltip = live
+        ? `Debug Notebook: pinned to "${pin}". Click to change or unpin.`
+        : `Debug Notebook: pinned to "${pin}", which is not running. Click to change or unpin.`;
+      pinStatus.backgroundColor = live ? undefined : new vscode.ThemeColor('statusBarItem.warningBackground');
+    } else {
+      const active = vscode.debug.activeDebugSession;
+      pinStatus.text = active ? `$(debug-disconnect) ${active.name}` : '$(debug-disconnect) no session';
+      pinStatus.tooltip = 'Debug Notebook: following the active debug session. Click to pin.';
+      pinStatus.backgroundColor = undefined;
+    }
+    pinStatus.show();
+  };
+
   const notebooksFor = (state: SessionState): vscode.NotebookDocument[] =>
     vscode.workspace.notebookDocuments.filter((doc) => {
       if (doc.notebookType !== NOTEBOOK_TYPE) {
@@ -74,7 +104,18 @@ export function activate(context: vscode.ExtensionContext): void {
     new VariableService(registry),
     new DapCompletionProvider(registry),
     controller.onDidWriteMetadata(() => statusBar.refresh()),
-    vscode.window.onDidChangeActiveNotebookEditor(trackNotebook),
+    pinStatus,
+    vscode.window.onDidChangeActiveNotebookEditor((e) => {
+      trackNotebook(e);
+      updatePinUi();
+    }),
+    vscode.workspace.onDidChangeNotebookDocument((e) => {
+      if (e.metadata && e.notebook === vscode.window.activeNotebookEditor?.notebook) {
+        updatePinUi();
+      }
+    }),
+    vscode.debug.onDidChangeActiveDebugSession(updatePinUi),
+    registry.onDidRemove(updatePinUi),
     vscode.workspace.onDidCloseNotebookDocument((doc) => {
       if (lastNotebook === doc) {
         lastNotebook = undefined;
@@ -152,8 +193,14 @@ export function activate(context: vscode.ExtensionContext): void {
       ]);
       await vscode.workspace.applyEdit(edit);
       const cell = notebook.cellAt(index);
-      const nbEditor = vscode.window.visibleNotebookEditors.find((e) => e.notebook === notebook);
-      nbEditor?.revealRange(new vscode.NotebookRange(index, index + 1), vscode.NotebookEditorRevealType.InCenterIfOutsideViewport);
+      const range = new vscode.NotebookRange(index, index + 1);
+      const uri = notebook.uri.toString();
+      let nbEditor = vscode.window.visibleNotebookEditors.find((e) => e.notebook.uri.toString() === uri);
+      if (!nbEditor) {
+        nbEditor = await vscode.window.showNotebookDocument(notebook, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+      }
+      nbEditor.selections = [range];
+      nbEditor.revealRange(range, vscode.NotebookEditorRevealType.InCenter);
       await controller.executeCells([cell], notebook);
     }),
 
@@ -170,7 +217,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const current = pinOf(editor.notebook);
       const picks: (vscode.QuickPickItem & { name?: string })[] = [
-        { label: '$(debug-disconnect) Follow the active session', description: current ? '' : 'current', name: undefined },
+        current
+          ? { label: `$(pinned) Unpin from "${current}"`, description: 'follow the active session instead', name: undefined }
+          : { label: '$(debug-disconnect) Follow the active session', description: 'current', name: undefined },
         ...sessions.map((s) => ({
           label: `$(debug) ${s.session.name}`,
           description: [s.session.type, s.session.name === current ? 'pinned' : ''].filter(Boolean).join(' · '),
@@ -182,12 +231,14 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       await setPin(editor.notebook, choice.name);
+      updatePinUi();
     }),
 
     vscode.commands.registerCommand('debugNotebook.unpinSession', async () => {
       const editor = vscode.window.activeNotebookEditor;
       if (editor?.notebook.notebookType === NOTEBOOK_TYPE) {
         await setPin(editor.notebook, undefined);
+        updatePinUi();
       }
     }),
 
@@ -204,6 +255,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
   );
+  updatePinUi();
 }
 
 function resolveCells(arg: unknown): vscode.NotebookCell[] {

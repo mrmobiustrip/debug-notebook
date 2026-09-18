@@ -61,7 +61,7 @@
       },
       {
         "command": "debugNotebook.unpinSession",
-        "title": "Unpin Debug Session",
+        "title": "Unpin Debug Session (follow active)",
         "category": "Debug Notebook",
         "icon": "$(pinned)"
       }
@@ -99,7 +99,12 @@
       "notebook/toolbar": [
         {
           "command": "debugNotebook.pinSession",
-          "when": "notebookType == debug-notebook",
+          "when": "notebookType == debug-notebook && !debugNotebook.pinned",
+          "group": "navigation@10"
+        },
+        {
+          "command": "debugNotebook.unpinSession",
+          "when": "notebookType == debug-notebook && debugNotebook.pinned",
           "group": "navigation@10"
         }
       ],
