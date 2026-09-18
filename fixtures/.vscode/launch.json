@@ -6,7 +6,8 @@
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/sample.py",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "python": "${config:python.defaultInterpreterPath}"
     },
     {
       "name": "Node: sample.js",

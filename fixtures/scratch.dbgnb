@@ -1,8 +1,30 @@
 {
  "nbformat": 4,
  "nbformat_minor": 5,
- "metadata": {"language_info": {"name": "python"}, "debugNotebook": {}},
+ "metadata": {
+  "language_info": {
+   "name": "python"
+  },
+  "debugNotebook": {}
+ },
  "cells": [
-  {"cell_type": "code", "source": "for k, v in sorted(locals().items()):\n    print(k, '=', v)\ntotal * 2", "metadata": {}, "outputs": [], "execution_count": null}
+  {
+   "cell_type": "code",
+   "source": "for k, v in sorted(locals().items()):\n    print(k, '=', v)\ntotal * 2",
+   "metadata": {
+    "vscode": {
+     "languageId": "python"
+    }
+   },
+   "execution_count": 1,
+   "outputs": [
+    {
+     "output_type": "error",
+     "ename": "DebugNotebook",
+     "evalue": "No active debug session. Start debugging and pause at a breakpoint.",
+     "traceback": []
+    }
+   ]
+  }
  ]
 }

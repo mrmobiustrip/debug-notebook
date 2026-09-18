@@ -3,3 +3,4 @@ dist/
 *.vsix
 .vscode-test/
 .DS_Store
+fixtures/.vscode/settings.json
