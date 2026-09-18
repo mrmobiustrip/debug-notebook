@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import type { SessionRegistry } from '../session/SessionRegistry';
-import { describeRun, readRunMetadata } from './Staleness';
-import { NOTEBOOK_TYPE } from './constants';
+import { describeRun } from './Staleness';
+import type { RunStore } from './RunStore';
+import { NOTEBOOK_TYPES } from './constants';
 import { isAutoRun } from './WatchScheduler';
 
 export class RunStatusProvider implements vscode.NotebookCellStatusBarItemProvider, vscode.Disposable {
@@ -9,11 +10,15 @@ export class RunStatusProvider implements vscode.NotebookCellStatusBarItemProvid
   readonly onDidChangeCellStatusBarItems = this.changeEmitter.event;
   private readonly disposables: vscode.Disposable[];
 
-  constructor(private readonly registry: SessionRegistry) {
+  constructor(
+    private readonly registry: SessionRegistry,
+    private readonly runs: RunStore,
+  ) {
     this.disposables = [
       registry.onDidChange(() => this.changeEmitter.fire()),
       registry.onDidRemove(() => this.changeEmitter.fire()),
-      vscode.notebooks.registerNotebookCellStatusBarItemProvider(NOTEBOOK_TYPE, this),
+      runs.onDidChange(() => this.changeEmitter.fire()),
+      ...NOTEBOOK_TYPES.map((type) => vscode.notebooks.registerNotebookCellStatusBarItemProvider(type, this)),
     ];
   }
 
@@ -25,7 +30,7 @@ export class RunStatusProvider implements vscode.NotebookCellStatusBarItemProvid
       watch.command = { command: 'debugNotebook.toggleAutoRun', title: 'Toggle watch', arguments: [cell] };
       items.push(watch);
     }
-    const meta = readRunMetadata(cell.metadata);
+    const meta = this.runs.get(cell);
     if (meta) {
       const live = this.registry.get(meta.sessionRunId);
       const status = describeRun(meta, live);

@@ -16,7 +16,8 @@
   "activationEvents": [
     "onNotebook:debug-notebook",
     "onDebug",
-    "onRenderer:debug-notebook.variable"
+    "onRenderer:debug-notebook.variable",
+    "onNotebook:jupyter-notebook"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -70,19 +71,19 @@
       "commandPalette": [
         {
           "command": "debugNotebook.rerunStale",
-          "when": "notebookType == debug-notebook"
+          "when": "notebookType == debug-notebook || notebookKernel =~ /debug-notebook-controller/"
         },
         {
           "command": "debugNotebook.toggleAutoRun",
-          "when": "notebookType == debug-notebook"
+          "when": "notebookType == debug-notebook || notebookKernel =~ /debug-notebook-controller/"
         },
         {
           "command": "debugNotebook.pinSession",
-          "when": "notebookType == debug-notebook"
+          "when": "notebookType == debug-notebook || notebookKernel =~ /debug-notebook-controller/"
         },
         {
           "command": "debugNotebook.unpinSession",
-          "when": "notebookType == debug-notebook"
+          "when": "notebookType == debug-notebook || notebookKernel =~ /debug-notebook-controller/"
         },
         {
           "command": "debugNotebook.sendSelection",
@@ -92,19 +93,19 @@
       "notebook/cell/title": [
         {
           "command": "debugNotebook.toggleAutoRun",
-          "when": "notebookType == debug-notebook && notebookCellType == code",
+          "when": "(notebookType == debug-notebook || notebookKernel =~ /debug-notebook-controller/) && notebookCellType == code",
           "group": "inline@1"
         }
       ],
       "notebook/toolbar": [
         {
           "command": "debugNotebook.pinSession",
-          "when": "notebookType == debug-notebook && !debugNotebook.pinned",
+          "when": "(notebookType == debug-notebook || notebookKernel =~ /debug-notebook-controller/) && !debugNotebook.pinned",
           "group": "navigation@10"
         },
         {
           "command": "debugNotebook.unpinSession",
-          "when": "notebookType == debug-notebook && debugNotebook.pinned",
+          "when": "(notebookType == debug-notebook || notebookKernel =~ /debug-notebook-controller/) && debugNotebook.pinned",
           "group": "navigation@10"
         }
       ],

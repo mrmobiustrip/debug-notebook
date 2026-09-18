@@ -2,15 +2,14 @@
  * Pure staleness logic, kept free of vscode so it unit-tests trivially.
  */
 
-/** Written to `cell.metadata.debugNotebookRun` after every execution. Transient. */
+/** Recorded per cell after every execution (see RunStore). */
 export interface RunMetadata {
+  notebookUri: string;
   sessionRunId: string;
   sessionName: string;
   stopSeq: number;
   location: string;
 }
-
-export const RUN_METADATA_KEY = 'debugNotebookRun';
 
 export type RunStatus =
   | { kind: 'current'; text: string; tooltip: string }
@@ -44,22 +43,5 @@ export function describeRun(meta: RunMetadata, live: LiveSession | undefined): R
     stopsAgo,
     text: `○ stale — ran at ${meta.location}, ${n}`,
     tooltip: `The debuggee has stopped ${n} since this output was produced. It may no longer reflect the current state.`,
-  };
-}
-
-export function readRunMetadata(metadata: Readonly<Record<string, unknown>> | undefined): RunMetadata | undefined {
-  const raw = metadata?.[RUN_METADATA_KEY];
-  if (!raw || typeof raw !== 'object') {
-    return undefined;
-  }
-  const m = raw as Partial<RunMetadata>;
-  if (typeof m.sessionRunId !== 'string' || typeof m.stopSeq !== 'number') {
-    return undefined;
-  }
-  return {
-    sessionRunId: m.sessionRunId,
-    sessionName: typeof m.sessionName === 'string' ? m.sessionName : '',
-    stopSeq: m.stopSeq,
-    location: typeof m.location === 'string' ? m.location : '',
   };
 }

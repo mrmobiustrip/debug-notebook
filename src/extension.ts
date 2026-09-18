@@ -13,7 +13,7 @@ import { RunStatusProvider } from './notebook/StatusBar';
 import { DapCompletionProvider } from './notebook/Completions';
 import { VariableService } from './notebook/VariableService';
 import { AUTO_RUN_KEY, WatchScheduler, isAutoRun } from './notebook/WatchScheduler';
-import { RUN_METADATA_KEY } from './notebook/Staleness';
+import { RunStore } from './notebook/RunStore';
 import { NOTEBOOK_TYPE } from './notebook/constants';
 
 const config = () => vscode.workspace.getConfiguration('debugNotebook');
@@ -30,8 +30,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
   const router = new OutputRouter(registry.onOutput);
-  const controller = new DebugNotebookController(registry, resolver, profiles, router);
-  const statusBar = new RunStatusProvider(registry);
+  const runs = new RunStore();
+  const controller = new DebugNotebookController(registry, resolver, profiles, router, runs);
+  const statusBar = new RunStatusProvider(registry, runs);
+  const owns = (doc: vscode.NotebookDocument) => controller.owns(doc);
 
   const activeLanguage = (): string => {
     const session = vscode.debug.activeDebugSession;
@@ -41,7 +43,7 @@ export function activate(context: vscode.ExtensionContext): void {
   /** Most recently focused debug notebook, for send-selection. */
   let lastNotebook: vscode.NotebookDocument | undefined;
   const trackNotebook = (editor: vscode.NotebookEditor | undefined) => {
-    if (editor?.notebook.notebookType === NOTEBOOK_TYPE) {
+    if (editor && owns(editor.notebook)) {
       lastNotebook = editor.notebook;
     }
   };
@@ -57,7 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
   pinStatus.command = 'debugNotebook.pinSession';
   const updatePinUi = () => {
     const editor = vscode.window.activeNotebookEditor;
-    if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
+    if (!editor || !owns(editor.notebook)) {
       pinStatus.hide();
       void vscode.commands.executeCommand('setContext', 'debugNotebook.pinned', false);
       return;
@@ -82,7 +84,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const notebooksFor = (state: SessionState): vscode.NotebookDocument[] =>
     vscode.workspace.notebookDocuments.filter((doc) => {
-      if (doc.notebookType !== NOTEBOOK_TYPE) {
+      if (!owns(doc)) {
         return false;
       }
       const pin = pinOf(doc);
@@ -101,9 +103,13 @@ export function activate(context: vscode.ExtensionContext): void {
     controller,
     statusBar,
     watcher,
+    runs,
     new VariableService(registry),
-    new DapCompletionProvider(registry),
-    controller.onDidWriteMetadata(() => statusBar.refresh()),
+    new DapCompletionProvider(registry, owns),
+    controller.onDidChangeSelection(() => {
+      trackNotebook(vscode.window.activeNotebookEditor);
+      updatePinUi();
+    }),
     pinStatus,
     vscode.window.onDidChangeActiveNotebookEditor((e) => {
       trackNotebook(e);
@@ -121,17 +127,13 @@ export function activate(context: vscode.ExtensionContext): void {
         lastNotebook = undefined;
       }
     }),
-    vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, new DebugNotebookSerializer(activeLanguage), {
-      // Run metadata is a snapshot of a live session; never persist it and
-      // never let it dirty the document.
-      transientCellMetadata: { [RUN_METADATA_KEY]: true },
-    }),
+    vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, new DebugNotebookSerializer(activeLanguage)),
 
     vscode.commands.registerCommand('debugNotebook.openScratch', () => openScratch(activeLanguage())),
 
     vscode.commands.registerCommand('debugNotebook.rerunStale', async () => {
       const editor = vscode.window.activeNotebookEditor;
-      if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
+      if (!editor || !owns(editor.notebook)) {
         void vscode.window.showInformationMessage('Focus a debug notebook first.');
         return;
       }
@@ -180,7 +182,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!text.trim()) {
         return;
       }
-      let notebook = lastNotebook ?? vscode.workspace.notebookDocuments.find((d) => d.notebookType === NOTEBOOK_TYPE);
+      let notebook = lastNotebook ?? vscode.workspace.notebookDocuments.find(owns);
       if (!notebook) {
         notebook = await openScratch(activeLanguage(), true);
         lastNotebook = notebook;
@@ -206,7 +208,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('debugNotebook.pinSession', async () => {
       const editor = vscode.window.activeNotebookEditor;
-      if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
+      if (!editor || !owns(editor.notebook)) {
         void vscode.window.showInformationMessage('Focus a debug notebook first.');
         return;
       }
@@ -236,7 +238,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand('debugNotebook.unpinSession', async () => {
       const editor = vscode.window.activeNotebookEditor;
-      if (editor?.notebook.notebookType === NOTEBOOK_TYPE) {
+      if (editor && owns(editor.notebook)) {
         await setPin(editor.notebook, undefined);
         updatePinUi();
       }
@@ -263,7 +265,7 @@ function resolveCells(arg: unknown): vscode.NotebookCell[] {
     return [arg as vscode.NotebookCell];
   }
   const editor = vscode.window.activeNotebookEditor;
-  if (!editor || editor.notebook.notebookType !== NOTEBOOK_TYPE) {
+  if (!editor) {
     return [];
   }
   return editor.selections.flatMap((r) => editor.notebook.getCells(r));

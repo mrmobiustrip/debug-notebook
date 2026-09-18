@@ -6,8 +6,9 @@ import { cancel } from '../session/Dap';
 import { ProfileRegistry } from '../profiles';
 import { CellError } from '../profiles/LanguageProfile';
 import { OutputRouter } from './OutputRouter';
-import { RUN_METADATA_KEY, RunMetadata, readRunMetadata } from './Staleness';
-import { CONTROLLER_ID, NOTEBOOK_TYPE } from './constants';
+import { RunMetadata } from './Staleness';
+import { RunStore } from './RunStore';
+import { CONTROLLER_ID, JUPYTER_NOTEBOOK_TYPE, NOTEBOOK_TYPE } from './constants';
 
 interface InFlight {
   notebook: vscode.NotebookDocument;
@@ -20,27 +21,52 @@ interface InFlight {
 }
 
 export class DebugNotebookController implements vscode.Disposable {
-  readonly controller: vscode.NotebookController;
+  /** One controller per notebook type: our own, plus Jupyter's so `.ipynb` files can run against a paused process. */
+  private readonly controllers = new Map<string, vscode.NotebookController>();
   private readonly executionOrder = new Map<string, number>();
   private queue: Promise<void> = Promise.resolve();
   private current: InFlight | undefined;
   private readonly disposables: vscode.Disposable[] = [];
-  private readonly onDidWriteMetadataEmitter = new vscode.EventEmitter<void>();
-  readonly onDidWriteMetadata = this.onDidWriteMetadataEmitter.event;
+  /** `.ipynb` documents whose kernel picker currently selects us. */
+  private readonly selectedJupyter = new Set<string>();
+  private readonly selectionEmitter = new vscode.EventEmitter<void>();
+  readonly onDidChangeSelection = this.selectionEmitter.event;
 
   constructor(
     private readonly registry: SessionRegistry,
     private readonly resolver: TargetResolver,
     private readonly profiles: ProfileRegistry,
     private readonly router: OutputRouter,
+    private readonly runs: RunStore,
   ) {
-    this.controller = vscode.notebooks.createNotebookController(CONTROLLER_ID, NOTEBOOK_TYPE, 'Debug Session');
-    this.controller.description = 'Evaluate cells in the selected frame of the paused debuggee';
-    this.controller.detail = 'Uses the active debug session via DAP evaluate';
-    this.controller.supportsExecutionOrder = true;
-    this.controller.executeHandler = (cells, notebook) => this.executeCells(cells, notebook);
-    this.controller.interruptHandler = (notebook) => this.interrupt(notebook);
-    this.disposables.push(this.controller, this.onDidWriteMetadataEmitter);
+    for (const type of [NOTEBOOK_TYPE, JUPYTER_NOTEBOOK_TYPE]) {
+      const id = type === NOTEBOOK_TYPE ? CONTROLLER_ID : `${CONTROLLER_ID}-jupyter`;
+      const controller = vscode.notebooks.createNotebookController(id, type, 'Debug Session');
+      controller.description = 'Evaluate cells in the selected frame of the paused debuggee';
+      controller.detail = 'Uses the active debug session via DAP evaluate';
+      controller.supportsExecutionOrder = true;
+      controller.executeHandler = (cells, notebook) => this.executeCells(cells, notebook);
+      controller.interruptHandler = (notebook) => this.interrupt(notebook);
+      if (type === JUPYTER_NOTEBOOK_TYPE) {
+        controller.onDidChangeSelectedNotebooks(({ notebook, selected }) => {
+          const key = notebook.uri.toString();
+          if (selected) {
+            this.selectedJupyter.add(key);
+          } else {
+            this.selectedJupyter.delete(key);
+          }
+          this.selectionEmitter.fire();
+        });
+      }
+      this.controllers.set(type, controller);
+      this.disposables.push(controller);
+    }
+    this.disposables.push(this.selectionEmitter);
+  }
+
+  /** True for our own notebooks and for `.ipynb` files that picked the Debug Session kernel. */
+  owns(notebook: vscode.NotebookDocument): boolean {
+    return notebook.notebookType === NOTEBOOK_TYPE || this.selectedJupyter.has(notebook.uri.toString());
   }
 
   /** Public so commands (re-run stale) can drive execution directly. */
@@ -67,7 +93,7 @@ export class DebugNotebookController implements vscode.Disposable {
 
   staleCells(notebook: vscode.NotebookDocument): vscode.NotebookCell[] {
     return notebook.getCells().filter((cell) => {
-      const meta = readRunMetadata(cell.metadata);
+      const meta = this.runs.get(cell);
       if (!meta) {
         return false;
       }
@@ -77,7 +103,8 @@ export class DebugNotebookController implements vscode.Disposable {
   }
 
   private async executeOne(cell: vscode.NotebookCell, notebook: vscode.NotebookDocument): Promise<void> {
-    const execution = this.controller.createNotebookCellExecution(cell);
+    const controller = this.controllers.get(notebook.notebookType) ?? this.controllers.get(NOTEBOOK_TYPE)!;
+    const execution = controller.createNotebookCellExecution(cell);
     const key = notebook.uri.toString();
     const order = (this.executionOrder.get(key) ?? 0) + 1;
     this.executionOrder.set(key, order);
@@ -142,12 +169,13 @@ export class DebugNotebookController implements vscode.Disposable {
       // If the evaluate itself hit a breakpoint, the output reflects the new
       // stop, so record the stopSeq at completion rather than at resolution.
       const meta: RunMetadata = {
+        notebookUri: notebook.uri.toString(),
         sessionRunId: target.session.id,
         sessionName: target.session.name,
         stopSeq: target.state.stopSeq,
         location: target.location,
       };
-      await this.writeRunMetadata(notebook, cell, meta);
+      this.runs.set(cell, meta);
     } catch (err) {
       if (flight.abandoned) {
         await execution.appendOutput(
@@ -207,19 +235,6 @@ export class DebugNotebookController implements vscode.Disposable {
     } catch {
       // Language may not be installed; harmless.
     }
-  }
-
-  private async writeRunMetadata(
-    notebook: vscode.NotebookDocument,
-    cell: vscode.NotebookCell,
-    meta: RunMetadata,
-  ): Promise<void> {
-    const edit = new vscode.WorkspaceEdit();
-    edit.set(notebook.uri, [
-      vscode.NotebookEdit.updateCellMetadata(cell.index, { ...cell.metadata, [RUN_METADATA_KEY]: meta }),
-    ]);
-    await vscode.workspace.applyEdit(edit);
-    this.onDidWriteMetadataEmitter.fire();
   }
 
   dispose(): void {

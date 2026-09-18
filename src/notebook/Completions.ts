@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { SessionRegistry } from '../session/SessionRegistry';
 import { completions } from '../session/Dap';
-import { NOTEBOOK_TYPE } from './constants';
+import { NOTEBOOK_TYPES } from './constants';
 
 const KIND: Record<string, vscode.CompletionItemKind> = {
   method: vscode.CompletionItemKind.Method,
@@ -38,8 +38,15 @@ const KIND: Record<string, vscode.CompletionItemKind> = {
 export class DapCompletionProvider implements vscode.CompletionItemProvider, vscode.Disposable {
   private readonly registration: vscode.Disposable;
 
-  constructor(private readonly registry: SessionRegistry) {
-    this.registration = vscode.languages.registerCompletionItemProvider({ notebookType: NOTEBOOK_TYPE }, this, '.');
+  constructor(
+    private readonly registry: SessionRegistry,
+    private readonly owns: (notebook: vscode.NotebookDocument) => boolean,
+  ) {
+    this.registration = vscode.languages.registerCompletionItemProvider(
+      NOTEBOOK_TYPES.map((notebookType) => ({ notebookType })),
+      this,
+      '.',
+    );
   }
 
   async provideCompletionItems(
@@ -47,6 +54,10 @@ export class DapCompletionProvider implements vscode.CompletionItemProvider, vsc
     position: vscode.Position,
     token: vscode.CancellationToken,
   ): Promise<vscode.CompletionItem[] | undefined> {
+    const notebook = vscode.workspace.notebookDocuments.find((d) => d.getCells().some((c) => c.document === document));
+    if (notebook && !this.owns(notebook)) {
+      return undefined;
+    }
     const session = vscode.debug.activeDebugSession;
     if (!session) {
       return undefined;
