@@ -22,7 +22,17 @@ npm install
 npm run build
 ```
 
-Then press F5 (**Run Extension**). The dev host opens the `fixtures/` folder:
+Then press F5 (**Run Extension**). The dev host opens the `fixtures/` folder.
+
+Works the same in VS Code forks (Antigravity IDE, Cursor, VSCodium). From a shell, using Antigravity as the example:
+
+```bash
+"/Applications/Antigravity IDE.app/Contents/Resources/app/bin/antigravity-ide" --extensionDevelopmentPath="$PWD" "$PWD/fixtures"
+```
+
+If the IDE is already running, the currently focused window reloads as the dev host. `fixtures/scratch.dbgnb` is a ready-made notebook to open once paused.
+
+Walkthrough:
 
 1. Open `sample.py`, set a breakpoint on the `return total` line, start **Python: sample.py**.
 2. Run **Debug Notebook: Open Scratch Notebook** from the command palette.

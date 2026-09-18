@@ -1,0 +1,8 @@
+{
+ "nbformat": 4,
+ "nbformat_minor": 5,
+ "metadata": {"language_info": {"name": "python"}, "debugNotebook": {}},
+ "cells": [
+  {"cell_type": "code", "source": "for k, v in sorted(locals().items()):\n    print(k, '=', v)\ntotal * 2", "metadata": {}, "outputs": [], "execution_count": null}
+ ]
+}
