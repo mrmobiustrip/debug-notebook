@@ -4,6 +4,22 @@ A VS Code notebook whose "kernel" is the active debug session. Cells are evaluat
 
 Design: [docs/design.md](docs/design.md). This is **Phase 1**: the generic MVP that works with any debug adapter.
 
+![Rich results and an expandable variable tree while paused in a Python frame](media/screenshots/python-rich-and-tree.png)
+
+After stepping, every output says which stop it came from; trees freeze once their variable references die:
+
+![Cells marked stale after stepping, tree frozen](media/screenshots/stale-after-step.png)
+
+A collapsed first cell declares the frame's names for the language server, so nothing is red and completions know the types:
+
+![Auto-maintained scope stub cell](media/screenshots/scope-stub.png)
+
+Get there from the debug toolbar, the Debug Console title, `Cmd+K N`, or straight from the Variables view:
+
+![Notebook button on the debug toolbar](media/screenshots/debug-toolbar.png) ![Focus or Open Debug Notebook button in the Debug Console](media/screenshots/console-button-tooltip.png)
+
+![Inspect in Debug Notebook from the Variables view context menu](media/screenshots/inspect-from-variables.png)
+
 ## What works
 
 - `.dbgnb` notebook type, nbformat-4 compatible (rename to `.ipynb` to open elsewhere).
