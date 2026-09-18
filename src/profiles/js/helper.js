@@ -128,8 +128,14 @@
     return s.length > 80 ? s.slice(0, 77) + '…' : s;
   }
 
+  var TABLE_STYLE =
+    '<style>.dbgnb-table{border-collapse:collapse;font-family:var(--vscode-editor-font-family,monospace);font-size:var(--vscode-editor-font-size,13px)}' +
+    '.dbgnb-table th,.dbgnb-table td{border:1px solid var(--vscode-editorWidget-border,#444);padding:2px 8px;text-align:left;vertical-align:top}' +
+    '.dbgnb-table thead th{background:var(--vscode-editorWidget-background,rgba(128,128,128,.15));font-weight:600}' +
+    '.dbgnb-table tbody th{color:var(--vscode-descriptionForeground);font-weight:normal}</style>';
+
   function table(arr, cols) {
-    var h = '<table class="dbgnb-table"><thead><tr><th></th>';
+    var h = TABLE_STYLE + '<table class="dbgnb-table"><thead><tr><th></th>';
     for (var c = 0; c < cols.length; c++) h += '<th>' + escapeHtml(cols[c]) + '</th>';
     h += '</tr></thead><tbody>';
     for (var r = 0; r < arr.length; r++) {
@@ -160,7 +166,13 @@
     }
     if (v instanceof Promise) return b;
     var cols = recordColumns(v);
-    if (cols) b['text/html'] = table(v, cols);
+    if (cols) {
+      // VS Code's default display order ranks application/json above
+      // text/html, so a table-shaped result carries the table only; the
+      // variable tree still exposes the structure.
+      b['text/html'] = table(v, cols);
+      return b;
+    }
     var plain = toPlain(v, opts);
     try {
       b['application/json'] = JSON.stringify(plain, null, 1);

@@ -26,11 +26,11 @@ test('plain objects become application/json', () => {
   assert.equal(b['text/html'], undefined);
 });
 
-test('arrays of records become an html table plus json', () => {
+test('arrays of records become an html table (no json, which VS Code would rank above it)', () => {
   const [b] = format([{ id: 1, name: 'a' }, { id: 2, name: 'b', extra: true }]);
   assert.match(b['text/html'], /<table[^>]*>.*<th>id<\/th><th>name<\/th><th>extra<\/th>/s);
   assert.match(b['text/html'], /<td>2<\/td><td>b<\/td><td>true<\/td>/);
-  assert.equal(JSON.parse(b['application/json']).length, 2);
+  assert.equal(b['application/json'], undefined);
 });
 
 test('mixed arrays get json only', () => {
@@ -68,13 +68,12 @@ test('errors render their stack', () => {
 });
 
 test('size cap drops the largest item and notes it', () => {
-  const [b] = format([{ v: 'x'.repeat(500) }], { maxBytes: 600 });
-  assert.equal(b['text/html'], undefined, 'largest item dropped first');
-  assert.ok(b['application/json'], 'smaller item kept once under the cap');
-  assert.match(b['text/plain'], /dropped text\/html/);
+  const [b] = format({ a: 'x'.repeat(500), b: 'y'.repeat(20) }, { maxBytes: 100 });
+  assert.equal(b['application/json'], undefined);
+  assert.match(b['text/plain'], /dropped application\/json/);
   const [c] = format([{ v: 'x'.repeat(500) }], { maxBytes: 100 });
-  assert.equal(c['application/json'], undefined);
-  assert.match(c['text/plain'], /dropped text\/html.*application\/json/);
+  assert.equal(c['text/html'], undefined);
+  assert.match(c['text/plain'], /dropped text\/html/);
 });
 
 test('getters that throw do not break formatting', () => {
