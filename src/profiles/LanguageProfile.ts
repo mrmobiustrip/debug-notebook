@@ -11,6 +11,11 @@ export interface LanguageProfile {
   matches(session: vscode.DebugSession): boolean;
   /** Language id for cells created for this session. */
   cellLanguage(session: vscode.DebugSession): string;
+  /**
+   * What to send as `text` in DAP `completions`: the current line only
+   * (debugpy ignores multi-line text) or the whole cell with line/column.
+   */
+  readonly completionScope?: 'line' | 'cell';
   onSessionReady?(target: ExecTarget): Promise<void>;
   /**
    * Run cell source in the target frame. Returns result outputs on success.

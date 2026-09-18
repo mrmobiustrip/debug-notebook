@@ -10,6 +10,7 @@ const copyHelper = {
     build.onEnd(async () => {
       await mkdir('dist', { recursive: true });
       await copyFile('src/profiles/python/helper.py', 'dist/helper.py');
+      await copyFile('src/profiles/js/helper.js', 'dist/helper.js');
     });
   },
 };

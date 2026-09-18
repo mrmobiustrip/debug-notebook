@@ -5,6 +5,7 @@ import { SessionRegistry, SessionState } from './session/SessionRegistry';
 import { TargetResolver } from './session/TargetResolver';
 import { ProfileRegistry } from './profiles';
 import { PythonProfile } from './profiles/PythonProfile';
+import { JsProfile } from './profiles/JsProfile';
 import { languageForSessionType } from './profiles/LanguageProfile';
 import { OutputRouter } from './notebook/OutputRouter';
 import { DebugNotebookController } from './notebook/Controller';
@@ -27,6 +28,13 @@ export function activate(context: vscode.ExtensionContext): void {
       helperSource: fs.readFileSync(path.join(context.extensionPath, 'dist', 'helper.py'), 'utf8'),
       maxBundleBytes: () => config().get<number>('python.maxBundleBytes', 10 * 1024 * 1024),
       inspector: () => config().get<boolean>('python.inspector', true),
+    }),
+  );
+  profiles.register(
+    new JsProfile({
+      helperSource: fs.readFileSync(path.join(context.extensionPath, 'dist', 'helper.js'), 'utf8'),
+      maxBundleBytes: () => config().get<number>('javascript.maxBundleBytes', 10 * 1024 * 1024),
+      inspector: () => config().get<boolean>('javascript.inspector', true),
     }),
   );
   const router = new OutputRouter(registry.onOutput);
@@ -105,7 +113,7 @@ export function activate(context: vscode.ExtensionContext): void {
     watcher,
     runs,
     new VariableService(registry),
-    new DapCompletionProvider(registry, owns),
+    new DapCompletionProvider(registry, profiles, owns),
     controller.onDidChangeSelection(() => {
       trackNotebook(vscode.window.activeNotebookEditor);
       updatePinUi();

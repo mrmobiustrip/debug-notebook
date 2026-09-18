@@ -4,7 +4,7 @@ A VS Code notebook whose "kernel" is the active debug session. Cells are evaluat
 
 Design: [docs/design.md](docs/design.md). This is **Phase 1**: the generic MVP that works with any debug adapter.
 
-## What works (Phases 1-3)
+## What works
 
 - `.dbgnb` notebook type, nbformat-4 compatible (rename to `.ipynb` to open elsewhere).
 - Controller that sends cell source to the active session with `context: 'repl'`, targeting whatever frame is selected in the Call Stack view.
@@ -20,6 +20,8 @@ Design: [docs/design.md](docs/design.md). This is **Phase 1**: the generic MVP t
 - **Watch cells**: toggle the eye icon on a cell and it re-runs on every stop, so a `df.head()` or a plot tracks stepping. Side effects repeat each time; the UI warns once.
 - **Send selection**: `Cmd+Alt+Enter` (`Ctrl+Alt+Enter`) or the editor context menu sends the selection (or current line) to the debug notebook as a new cell and runs it.
 - **Pinning**: the pin button in the notebook toolbar ties a notebook to a named session; unpinned notebooks follow the active one.
+- **JavaScript (js-debug: Node, Chrome, Edge, extension host)**: cells keep the Debug Console's semantics (completion value of the last statement, assignments to locals persist, `let`/`const` do not outlive the cell). Objects get a collapsible JSON view, arrays of records an HTML table, functions their source, plus the variable tree. Completions use the whole cell.
+- **`.ipynb` files**: pick **Debug Session** in the kernel picker of any Jupyter notebook to run its cells against the paused process. Nothing is written to the file by executing.
 
 ## Try it
 
@@ -70,6 +72,7 @@ The same flow works with **Node: sample.js** under js-debug.
 npm run typecheck
 npm test          # vitest unit tests (vscode API mocked in test/vscode-mock.ts) + Python helper tests
 npm run spike     # scripts/dap_spike.py: measures debugpy behaviours the Python profile relies on
+npm run spike:js -- path/to/js-debug-dap/src/dapDebugServer.js   # same for js-debug
 npm run watch
 ```
 
@@ -101,12 +104,15 @@ src/
     GenericProfile.ts     plain evaluate; any adapter
     PythonProfile.ts      debugpy: helper injection, split/bundle, chunked fetch
     python/helper.py      injected into the debuggee as module __dbgnb (pure parse/format)
+    JsProfile.ts          js-debug: eval wrapper keeps frame scope, helper formats the result
+    js/helper.js          injected as globalThis.__dbgnb (JSON/table/function formatting)
 fixtures/                 sample programs + launch configs for manual testing
 scripts/dap_spike.py      standalone DAP client that probes debugpy
+scripts/js_spike.py       same for js-debug (needs a js-debug-dap release: dapDebugServer.js)
 test/                     vitest unit tests
 ```
 
-## Not yet (Phase 4)
+## Ideas not done
 
-- js-debug profile with rich object previews.
-- A second controller on the `jupyter-notebook` type so `.ipynb` files can run against a paused process.
+- Chrome DOM previews beyond `outerHTML`; screenshots of canvases.
+- Persisting scratch notebooks automatically per workspace.

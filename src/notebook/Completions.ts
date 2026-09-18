@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { SessionRegistry } from '../session/SessionRegistry';
 import { completions } from '../session/Dap';
+import type { ProfileRegistry } from '../profiles';
 import { NOTEBOOK_TYPES } from './constants';
 
 const KIND: Record<string, vscode.CompletionItemKind> = {
@@ -31,15 +32,17 @@ const KIND: Record<string, vscode.CompletionItemKind> = {
  * merge with whatever language server is active; ours sort first because they
  * reflect the real objects in scope.
  *
- * debugpy only completes against a single line of `text` (multi-line text
- * yields nothing, verified in scripts/dap_spike.py), so we send the current
- * line and a 1-based column.
+ * Each profile says whether the adapter wants the current line or the whole
+ * cell as `text` (debugpy: line only; js-debug: whole cell with line/column,
+ * both verified in scripts/). `start` in a returned item is a 0-based offset
+ * into the `text` we sent (both adapters agree), mapped back to a range here.
  */
 export class DapCompletionProvider implements vscode.CompletionItemProvider, vscode.Disposable {
   private readonly registration: vscode.Disposable;
 
   constructor(
     private readonly registry: SessionRegistry,
+    private readonly profiles: ProfileRegistry,
     private readonly owns: (notebook: vscode.NotebookDocument) => boolean,
   ) {
     this.registration = vscode.languages.registerCompletionItemProvider(
@@ -72,17 +75,21 @@ export class DapCompletionProvider implements vscode.CompletionItemProvider, vsc
         ? item.frameId
         : undefined;
 
-    const lineText = document.lineAt(position.line).text;
+    const scope = this.profiles.for(session).completionScope ?? 'line';
+    const cellScope = scope === 'cell';
+    const text = cellScope ? document.getText() : document.lineAt(position.line).text;
+    const line = cellScope ? position.line + 1 : 1;
     let body: DebugProtocol.CompletionsResponse['body'];
     try {
-      body = await completions(session, { frameId, text: lineText, column: position.character + 1, line: 1 });
+      body = await completions(session, { frameId, text, column: position.character + 1, line });
     } catch {
       return undefined;
     }
     if (token.isCancellationRequested) {
       return undefined;
     }
-    return (body.targets ?? []).map((t) => toItem(t, document, position));
+    const base = cellScope ? 0 : document.offsetAt(new vscode.Position(position.line, 0));
+    return (body.targets ?? []).map((t) => toItem(t, document, position, base));
   }
 
   dispose(): void {
@@ -90,16 +97,23 @@ export class DapCompletionProvider implements vscode.CompletionItemProvider, vsc
   }
 }
 
-function toItem(t: DebugProtocol.CompletionItem, document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem {
+function toItem(
+  t: DebugProtocol.CompletionItem,
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  textOffset: number,
+): vscode.CompletionItem {
   const label = t.label;
   const item = new vscode.CompletionItem(label, KIND[t.type ?? ''] ?? vscode.CompletionItemKind.Text);
   item.insertText = t.text ?? label;
   item.detail = t.detail;
   item.sortText = `0${t.sortText ?? label}`;
   if (typeof t.start === 'number' && typeof t.length === 'number') {
-    // DAP: `start` is a 1-based column within `text` when columnsStartAt1.
-    const startCol = Math.max(0, t.start - 1);
-    item.range = new vscode.Range(position.line, startCol, position.line, startCol + t.length);
+    const start = document.positionAt(textOffset + t.start);
+    const end = document.positionAt(textOffset + t.start + t.length);
+    if (start.line === position.line && !start.isAfter(position)) {
+      item.range = new vscode.Range(start, end);
+    }
   } else if (t.selectionStart === undefined) {
     const word = document.getWordRangeAtPosition(position);
     if (word) {

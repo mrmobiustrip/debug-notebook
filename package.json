@@ -145,6 +145,17 @@
           "type": "boolean",
           "default": true,
           "description": "After a Python cell's trailing expression, add an expandable variable tree for the resulting object (uses DAP variables requests)."
+        },
+        "debugNotebook.javascript.maxBundleBytes": {
+          "type": "number",
+          "default": 10485760,
+          "minimum": 1024,
+          "description": "Maximum size of a rich output bundle (JSON view, table) from a JavaScript cell."
+        },
+        "debugNotebook.javascript.inspector": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add an expandable variable tree for the result object of a JavaScript cell."
         }
       }
     },
@@ -172,10 +183,12 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run && npm run test:py",
+    "test": "vitest run && npm run test:py && npm run test:js",
     "vscode:prepublish": "npm run build -- --production",
     "test:py": "python3 -m unittest discover -s test/python",
-    "spike": "python3 scripts/dap_spike.py"
+    "spike": "python3 scripts/dap_spike.py",
+    "test:js": "node --test 'test/js/*.test.mjs'",
+    "spike:js": "python3 scripts/js_spike.py"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

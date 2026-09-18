@@ -192,7 +192,7 @@ def main():
     # F. completions
     for text, line, col in (("tot", 1, 4), ("import os\nos.pa", 2, 6), ("items.ap", 1, 9)):
         r = d.request("completions", {"frameId": fid, "text": text, "line": line, "column": col})
-        targets = [t.get("label") for t in (r.get("body") or {}).get("targets", [])][:8]
+        targets = [(t.get("label"), t.get("start"), t.get("length")) for t in (r.get("body") or {}).get("targets", [])][:8]
         print(f"\n== F completions text={text!r} line={line} col={col}: success={r['success']} targets={targets}")
     # G. helper injection as a single expression, module not in frame
     helper_src = "def ping():\n    return 'pong'\n"
