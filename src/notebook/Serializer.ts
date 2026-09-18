@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { isStubCell } from './ScopeStub';
 
 /**
  * nbformat 4 compatible JSON so a `.dbgnb` can be renamed to `.ipynb` and
@@ -65,7 +66,7 @@ export class DebugNotebookSerializer implements vscode.NotebookSerializer {
       nbformat: 4,
       nbformat_minor: 5,
       metadata,
-      cells: data.cells.map((c) => this.fromCell(c)),
+      cells: data.cells.filter((c) => !isStubCell({ metadata: c.metadata ?? {} })).map((c) => this.fromCell(c)),
     };
     return new TextEncoder().encode(JSON.stringify(nb, null, 1) + '\n');
   }

@@ -21,6 +21,7 @@ Design: [docs/design.md](docs/design.md). This is **Phase 1**: the generic MVP t
 - **Send selection**: `Cmd+Alt+Enter` (`Ctrl+Alt+Enter`) or the editor context menu sends the selection (or current line) to the debug notebook as a new cell and runs it.
 - **Pinning**: the pin button in the notebook toolbar ties a notebook to a named session; unpinned notebooks follow the active one.
 - **JavaScript (js-debug: Node, Chrome, Edge, extension host)**: cells keep the Debug Console's semantics (completion value of the last statement, assignments to locals persist, `let`/`const` do not outlive the cell). Objects get a collapsible JSON view, arrays of records an HTML table, functions their source, plus the variable tree. Completions use the whole cell.
+- **No red squiggles**: a collapsed first cell declares the paused frame's names with types (`total: int; items: list; …`, or `var total, items;` for JS). The language server treats notebook cells as one module, so runtime names stop being "undefined" and get static completions. Refreshed on every stop and frame switch, never executed, never saved (`debugNotebook.scopeStub`).
 - **`.ipynb` files**: pick **Debug Session** in the kernel picker of any Jupyter notebook to run its cells against the paused process. Nothing is written to the file by executing.
 
 ## Try it

@@ -41,3 +41,10 @@ export function cancel(
 ): Thenable<void> {
   return session.customRequest('cancel', args);
 }
+
+export function scopes(
+  session: vscode.DebugSession,
+  args: DebugProtocol.ScopesArguments,
+): Thenable<DebugProtocol.ScopesResponse['body']> {
+  return session.customRequest('scopes', args);
+}

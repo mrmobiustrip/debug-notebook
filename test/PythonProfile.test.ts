@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as vscode from 'vscode';
-import { PythonProfile, stripQuotes, toCellError } from '../src/profiles/PythonProfile';
+import { PythonProfile, pythonAnnotation, stripQuotes, toCellError } from '../src/profiles/PythonProfile';
 import { CellError } from '../src/profiles/LanguageProfile';
 import type { ExecTarget } from '../src/session/TargetResolver';
 import { decode } from './helpers';
@@ -185,6 +185,24 @@ describe('PythonProfile', () => {
     const tree = out[1].items.find((i) => i.mime === 'application/vnd.debug-notebook.variable+json')!;
     expect(JSON.parse(decode(tree))).toMatchObject({ sessionId: 's1', variablesReference: 42, result: '<obj>', type: 'Thing', namedVariables: 3 });
     expect(calls.at(-1)![0]).toBe("__import__('__dbgnb')._last");
+  });
+
+  it('builds a typed scope stub', () => {
+    const text = profile().scopeStub(
+      [
+        { name: 'total', type: 'int', scope: 'Locals' },
+        { name: 'items', type: 'list', scope: 'Locals' },
+        { name: 'df', type: 'DataFrame', scope: 'Locals' },
+        { name: '__name__', type: 'str', scope: 'Globals' },
+      ],
+      'sample.py:11 in compute()',
+    );
+    expect(text).toBe(
+      '# Debug Notebook: names in the paused frame (sample.py:11 in compute()). Auto-updated on every stop; never executed or saved.\n' +
+        'from typing import Any\n' +
+        'total: int; items: list; df: Any\n',
+    );
+    expect(pythonAnnotation('NoneType')).toBe('Any');
   });
 
   it('parses tracebacks and strips quotes', () => {

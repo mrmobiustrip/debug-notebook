@@ -15,6 +15,7 @@ import { DapCompletionProvider } from './notebook/Completions';
 import { VariableService } from './notebook/VariableService';
 import { AUTO_RUN_KEY, WatchScheduler, isAutoRun } from './notebook/WatchScheduler';
 import { RunStore } from './notebook/RunStore';
+import { ScopeStubUpdater } from './notebook/ScopeStub';
 import { NOTEBOOK_TYPE } from './notebook/constants';
 
 const config = () => vscode.workspace.getConfiguration('debugNotebook');
@@ -105,6 +106,8 @@ export function activate(context: vscode.ExtensionContext): void {
     execute: (cells, notebook) => controller.executeCells(cells, notebook),
   });
 
+  const stubs = new ScopeStubUpdater(registry, resolver, profiles, notebooksFor, () => config().get<boolean>('scopeStub', true));
+
   context.subscriptions.push(
     registry,
     router,
@@ -112,6 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar,
     watcher,
     runs,
+    stubs,
     new VariableService(registry),
     new DapCompletionProvider(registry, profiles, owns),
     controller.onDidChangeSelection(() => {

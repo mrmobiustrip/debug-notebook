@@ -8,6 +8,7 @@ import { CellError } from '../profiles/LanguageProfile';
 import { OutputRouter } from './OutputRouter';
 import { RunMetadata } from './Staleness';
 import { RunStore } from './RunStore';
+import { isStubCell } from './ScopeStub';
 import { CONTROLLER_ID, JUPYTER_NOTEBOOK_TYPE, NOTEBOOK_TYPE } from './constants';
 
 interface InFlight {
@@ -72,7 +73,7 @@ export class DebugNotebookController implements vscode.Disposable {
   /** Public so commands (re-run stale) can drive execution directly. */
   executeCells(cells: readonly vscode.NotebookCell[], notebook: vscode.NotebookDocument): Promise<void> {
     for (const cell of cells) {
-      if (cell.kind !== vscode.NotebookCellKind.Code) {
+      if (cell.kind !== vscode.NotebookCellKind.Code || isStubCell(cell)) {
         continue;
       }
       // Executions are strictly serial: the debuggee is paused on one thread and

@@ -72,6 +72,14 @@ describe('DebugNotebookSerializer', () => {
     expect(nb.cells[0].languageId).toBe('javascript');
   });
 
+  it('drops scope stub cells on save', () => {
+    const stub = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'total: int', 'python');
+    stub.metadata = { debugNotebook: { stub: true }, inputCollapsed: true };
+    const real = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'total', 'python');
+    const out = roundTrip(new vscode.NotebookData([stub, real]));
+    expect(out.cells.map((c) => c.value)).toEqual(['total']);
+  });
+
   it('classifies mimes', () => {
     expect(isTextMime('text/html')).toBe(true);
     expect(isTextMime('application/vnd.debug-notebook.variable+json')).toBe(true);

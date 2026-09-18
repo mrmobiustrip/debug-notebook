@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { evaluate } from '../session/Dap';
 import { errorMessage } from '../session/TargetResolver';
-import { CellError, ExecCtx, LanguageProfile } from './LanguageProfile';
+import { CellError, ExecCtx, LanguageProfile, ScopeVariable } from './LanguageProfile';
 import { VARIABLE_MIME, VariableHandle } from '../renderer/protocol';
 
 /**
@@ -64,6 +64,20 @@ export class PythonProfile implements LanguageProfile {
 
   cellLanguage(): string {
     return 'python';
+  }
+
+  scopeStub(vars: ScopeVariable[], location: string): string {
+    const lines = [
+      `# Debug Notebook: names in the paused frame (${location}). Auto-updated on every stop; never executed or saved.`,
+      'from typing import Any',
+    ];
+    const decls = vars
+      .filter((v) => !v.name.startsWith('__'))
+      .map((v) => `${v.name}: ${pythonAnnotation(v.type)}`);
+    for (let i = 0; i < decls.length; i += 6) {
+      lines.push(decls.slice(i, i + 6).join('; '));
+    }
+    return lines.join('\n') + '\n';
   }
 
   async execute(ctx: ExecCtx, source: string): Promise<vscode.NotebookCellOutput[]> {
@@ -266,4 +280,10 @@ function toOutput(bundle: Record<string, string>): vscode.NotebookCellOutput {
     }
   }
   return new vscode.NotebookCellOutput(items);
+}
+
+const PY_BUILTIN_TYPES = new Set(['int', 'float', 'str', 'bool', 'bytes', 'list', 'dict', 'tuple', 'set', 'frozenset', 'complex', 'bytearray']);
+
+export function pythonAnnotation(type: string | undefined): string {
+  return type && PY_BUILTIN_TYPES.has(type) ? type : 'Any';
 }

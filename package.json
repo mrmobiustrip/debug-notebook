@@ -156,6 +156,11 @@
           "type": "boolean",
           "default": true,
           "description": "Add an expandable variable tree for the result object of a JavaScript cell."
+        },
+        "debugNotebook.scopeStub": {
+          "type": "boolean",
+          "default": true,
+          "description": "Maintain a collapsed, never-executed first cell that declares the paused frame's variables (with types where known), so the language server stops flagging them as undefined and can complete them. Refreshed on every stop and frame change; never saved."
         }
       }
     },

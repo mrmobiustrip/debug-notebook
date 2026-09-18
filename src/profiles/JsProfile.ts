@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { evaluate } from '../session/Dap';
 import { errorMessage } from '../session/TargetResolver';
-import { CellError, ExecCtx, LanguageProfile } from './LanguageProfile';
+import { CellError, ExecCtx, LanguageProfile, ScopeVariable } from './LanguageProfile';
 import { VARIABLE_MIME, VariableHandle } from '../renderer/protocol';
 
 /**
@@ -57,6 +57,15 @@ export class JsProfile implements LanguageProfile {
 
   cellLanguage(): string {
     return 'javascript';
+  }
+
+  scopeStub(vars: ScopeVariable[], location: string): string {
+    const names = vars.map((v) => v.name).filter((n) => !RESERVED.has(n));
+    const lines = [`// Debug Notebook: names in the paused frame (${location}). Auto-updated on every stop; never executed or saved.`];
+    for (let i = 0; i < names.length; i += 8) {
+      lines.push(`var ${names.slice(i, i + 8).join(', ')};`);
+    }
+    return lines.join('\n') + '\n';
   }
 
   async execute(ctx: ExecCtx, source: string): Promise<vscode.NotebookCellOutput[]> {
@@ -174,3 +183,5 @@ export function unquote(s: string): string {
   }
   return t;
 }
+
+const RESERVED = new Set(['this', 'arguments', 'undefined', 'NaN', 'Infinity', 'globalThis', 'window', 'self', 'global']);

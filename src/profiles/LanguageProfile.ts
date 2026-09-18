@@ -1,6 +1,12 @@
 import type * as vscode from 'vscode';
 import type { ExecTarget } from '../session/TargetResolver';
 
+export interface ScopeVariable {
+  name: string;
+  type?: string;
+  scope: string;
+}
+
 export interface ExecCtx {
   target: ExecTarget;
   token: vscode.CancellationToken;
@@ -16,6 +22,11 @@ export interface LanguageProfile {
    * (debugpy ignores multi-line text) or the whole cell with line/column.
    */
   readonly completionScope?: 'line' | 'cell';
+  /**
+   * Source for a never-executed first cell that declares the frame's names so
+   * the language server stops flagging them and can offer completions.
+   */
+  scopeStub?(vars: ScopeVariable[], location: string): string;
   onSessionReady?(target: ExecTarget): Promise<void>;
   /**
    * Run cell source in the target frame. Returns result outputs on success.
