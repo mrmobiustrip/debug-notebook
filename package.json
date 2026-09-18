@@ -3,7 +3,7 @@
   "displayName": "Debug Notebook",
   "description": "A notebook whose kernel is the active debug session. Cells evaluate in the selected stack frame of a paused process.",
   "version": "0.0.1",
-  "publisher": "eyadnabeel",
+  "publisher": "mrmobiustrip",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
