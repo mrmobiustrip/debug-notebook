@@ -4,7 +4,7 @@ A VS Code notebook whose "kernel" is the active debug session. Cells are evaluat
 
 Design: [docs/design.md](docs/design.md). This is **Phase 1**: the generic MVP that works with any debug adapter.
 
-## What works (Phase 1)
+## What works (Phases 1-2)
 
 - `.dbgnb` notebook type, nbformat-4 compatible (rename to `.ipynb` to open elsewhere).
 - Controller that sends cell source to the active session with `context: 'repl'`, targeting whatever frame is selected in the Call Stack view.
@@ -14,6 +14,8 @@ Design: [docs/design.md](docs/design.md). This is **Phase 1**: the generic MVP t
 - Fast failure when the process is running instead of paused.
 - Interrupt via DAP `cancel` when the adapter supports it.
 - Commands: **Debug Notebook: Open Scratch Notebook**, **Debug Notebook: Re-run Stale Cells**.
+- **Python (debugpy)**: a trailing expression renders as a rich MIME bundle (pandas `DataFrame` as an HTML table, anything with `_repr_html_`/`_repr_png_`/`_repr_mimebundle_`, IPython formatters when IPython is importable in the debuggee). Open matplotlib figures are captured as PNG after every cell and closed. End a cell with `;` to suppress the result. Results over `debugNotebook.python.maxBundleBytes` (10 MB) drop their largest items.
+- Runtime completions from the adapter (`.` trigger) for the selected frame, ranked above language-server suggestions.
 
 ## Try it
 
@@ -43,11 +45,15 @@ Walkthrough:
        print(k, '=', v)
    ```
 
-   Then in a second cell: `total * 2` (prints `200`).
+   Locals print as stdout; `total * 2` shows `200` as the result. Try
 
-   Phase 1 caveat: debugpy runs a multi-line cell as statements and drops the
-   value of a trailing expression, so put an expression you want to see on its
-   own cell. Phase 2 fixes this with the Python helper.
+   ```python
+   import pandas as pd, matplotlib.pyplot as plt
+   df = pd.DataFrame({'i': range(len(items)), 'item': items, 'weighted': [x * (i + 1) for i, x in enumerate(items)]})
+   plt.plot(df['weighted']); df
+   ```
+
+   if pandas/matplotlib are importable in the debuggee (`fixtures/.vscode/settings.json` decides which interpreter runs).
 
 4. Click a different frame in the Call Stack view and re-run: the scope changes.
 5. Step over a line: the cell status flips to `○ stale — ran at sample.py:11 in compute(), 1 stop ago`.
@@ -58,9 +64,12 @@ The same flow works with **Node: sample.js** under js-debug.
 
 ```bash
 npm run typecheck
-npm test          # vitest unit tests (vscode API mocked in test/vscode-mock.ts)
+npm test          # vitest unit tests (vscode API mocked in test/vscode-mock.ts) + Python helper tests
+npm run spike     # scripts/dap_spike.py: measures debugpy behaviours the Python profile relies on
 npm run watch
 ```
+
+How the Python profile works, and what was measured against debugpy 1.8.20: `docs/design.md` §6 and the header of `src/profiles/PythonProfile.ts`.
 
 ## Layout
 
@@ -77,15 +86,17 @@ src/
     OutputRouter.ts       attributes DAP output events to the running cell
     Staleness.ts          pure staleness logic
     StatusBar.ts          cell status bar items
+    Completions.ts        DAP completions provider
   profiles/
     LanguageProfile.ts    interface + session type -> language map
     GenericProfile.ts     plain evaluate; any adapter
+    PythonProfile.ts      debugpy: helper injection, split/bundle, chunked fetch
+    python/helper.py      injected into the debuggee as module __dbgnb (pure parse/format)
 fixtures/                 sample programs + launch configs for manual testing
+scripts/dap_spike.py      standalone DAP client that probes debugpy
 test/                     vitest unit tests
 ```
 
 ## Not yet (later phases)
 
-- Python rich outputs (DataFrames, matplotlib) via helper injection: Phase 2.
-- DAP completions: Phase 2.
 - Variable tree renderer, watch cells, send-selection, session pinning commands: Phase 3.

@@ -53,3 +53,15 @@ const LANGUAGE_BY_SESSION_TYPE: Record<string, string> = {
 export function languageForSessionType(type: string): string {
   return LANGUAGE_BY_SESSION_TYPE[type] ?? 'plaintext';
 }
+
+/** An error a profile wants rendered as a structured error output. */
+export class CellError extends Error {
+  constructor(
+    name: string,
+    message: string,
+    readonly traceback?: string,
+  ) {
+    super(message);
+    this.name = name;
+  }
+}

@@ -4,6 +4,7 @@ import { SessionRegistry } from '../session/SessionRegistry';
 import { NotebookPin, TargetError, TargetResolver, errorMessage } from '../session/TargetResolver';
 import { cancel } from '../session/Dap';
 import { ProfileRegistry } from '../profiles';
+import { CellError } from '../profiles/LanguageProfile';
 import { OutputRouter } from './OutputRouter';
 import { RUN_METADATA_KEY, RunMetadata, readRunMetadata } from './Staleness';
 import { CONTROLLER_ID, NOTEBOOK_TYPE } from './constants';
@@ -146,10 +147,14 @@ export class DebugNotebookController implements vscode.Disposable {
           ]),
         );
       } else {
-        const name = err instanceof TargetError ? 'DebugNotebook' : 'EvaluateError';
-        await execution.appendOutput(
-          new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.error({ name, message: errorMessage(err) })]),
-        );
+        const item =
+          err instanceof CellError
+            ? vscode.NotebookCellOutputItem.error({ name: err.name, message: err.message, stack: err.traceback })
+            : vscode.NotebookCellOutputItem.error({
+                name: err instanceof TargetError ? 'DebugNotebook' : 'EvaluateError',
+                message: errorMessage(err),
+              });
+        await execution.appendOutput(new vscode.NotebookCellOutput([item]));
       }
     } finally {
       seqListener?.dispose();

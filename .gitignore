@@ -4,3 +4,5 @@ dist/
 .vscode-test/
 .DS_Store
 fixtures/.vscode/settings.json
+.venv/
+__pycache__/

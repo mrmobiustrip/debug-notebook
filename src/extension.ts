@@ -1,7 +1,11 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SessionRegistry } from './session/SessionRegistry';
 import { TargetResolver } from './session/TargetResolver';
 import { ProfileRegistry } from './profiles';
+import { PythonProfile } from './profiles/PythonProfile';
+import { DapCompletionProvider } from './notebook/Completions';
 import { languageForSessionType } from './profiles/LanguageProfile';
 import { OutputRouter } from './notebook/OutputRouter';
 import { DebugNotebookController } from './notebook/Controller';
@@ -14,6 +18,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const registry = new SessionRegistry();
   const resolver = new TargetResolver(registry);
   const profiles = new ProfileRegistry();
+  profiles.register(
+    new PythonProfile({
+      helperSource: fs.readFileSync(path.join(context.extensionPath, 'dist', 'helper.py'), 'utf8'),
+      maxBundleBytes: () =>
+        vscode.workspace.getConfiguration('debugNotebook').get<number>('python.maxBundleBytes', 10 * 1024 * 1024),
+    }),
+  );
   const router = new OutputRouter(registry.onOutput);
   const controller = new DebugNotebookController(registry, resolver, profiles, router);
   const statusBar = new RunStatusProvider(registry);
@@ -28,6 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
     router,
     controller,
     statusBar,
+    new DapCompletionProvider(registry),
     controller.onDidWriteMetadata(() => statusBar.refresh()),
     vscode.workspace.registerNotebookSerializer(NOTEBOOK_TYPE, new DebugNotebookSerializer(activeLanguage), {
       // Run metadata is a snapshot of a live session; never persist it and

@@ -67,6 +67,12 @@
           "default": 75,
           "minimum": 0,
           "description": "How long (ms) to keep attributing stdout/stderr to a cell after its evaluate response arrives. Debug adapters deliver output asynchronously."
+        },
+        "debugNotebook.python.maxBundleBytes": {
+          "type": "number",
+          "default": 10485760,
+          "minimum": 1024,
+          "description": "Maximum size of a rich output bundle from a Python cell. Larger MIME items are dropped, largest first, and noted in the text output."
         }
       }
     }
@@ -75,8 +81,10 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run",
-    "vscode:prepublish": "npm run build -- --production"
+    "test": "vitest run && npm run test:py",
+    "vscode:prepublish": "npm run build -- --production",
+    "test:py": "python3 -m unittest discover -s test/python",
+    "spike": "python3 scripts/dap_spike.py"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
