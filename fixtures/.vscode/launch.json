@@ -14,6 +14,15 @@
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/sample.js"
+    },
+    {
+      "name": "Python: sample.py (with notebook)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/sample.py",
+      "console": "integratedTerminal",
+      "python": "${config:python.defaultInterpreterPath}",
+      "debugNotebook": "${workspaceFolder}/inspect.dbgnb"
     }
   ]
 }

@@ -6,3 +6,4 @@ dist/
 fixtures/.vscode/settings.json
 .venv/
 __pycache__/
+fixtures/inspect.dbgnb

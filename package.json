@@ -65,6 +65,17 @@
         "title": "Unpin Debug Session (follow active)",
         "category": "Debug Notebook",
         "icon": "$(pinned)"
+      },
+      {
+        "command": "debugNotebook.focusOrOpen",
+        "title": "Focus or Open Debug Notebook",
+        "category": "Debug Notebook",
+        "icon": "$(notebook)"
+      },
+      {
+        "command": "debugNotebook.inspectVariable",
+        "title": "Inspect in Debug Notebook",
+        "category": "Debug Notebook"
       }
     ],
     "menus": {
@@ -88,6 +99,10 @@
         {
           "command": "debugNotebook.sendSelection",
           "when": "inDebugMode && editorTextFocus"
+        },
+        {
+          "command": "debugNotebook.inspectVariable",
+          "when": "false"
         }
       ],
       "notebook/cell/title": [
@@ -115,20 +130,42 @@
           "when": "inDebugMode",
           "group": "debug@1"
         }
+      ],
+      "debug/toolBar": [
+        {
+          "command": "debugNotebook.focusOrOpen",
+          "group": "navigation@50"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "debugNotebook.focusOrOpen",
+          "when": "view == workbench.panel.repl.view && inDebugMode",
+          "group": "navigation@1"
+        },
+        {
+          "command": "debugNotebook.focusOrOpen",
+          "when": "view == workbench.debug.callStackView && inDebugMode",
+          "group": "navigation@1"
+        }
+      ],
+      "debug/variables/context": [
+        {
+          "command": "debugNotebook.inspectVariable",
+          "group": "3_modification@10"
+        }
+      ],
+      "debug/watch/context": [
+        {
+          "command": "debugNotebook.inspectVariable",
+          "when": "watchItemType == 'expression'",
+          "group": "3_modification@10"
+        }
       ]
     },
     "configuration": {
       "title": "Debug Notebook",
       "properties": {
-        "debugNotebook.openOnSessionStart": {
-          "type": "string",
-          "enum": [
-            "never",
-            "scratch"
-          ],
-          "default": "never",
-          "description": "Open a scratch debug notebook automatically when a debug session starts."
-        },
         "debugNotebook.outputGraceMs": {
           "type": "number",
           "default": 75,
@@ -161,6 +198,30 @@
           "type": "boolean",
           "default": true,
           "description": "Maintain a collapsed, never-executed first cell that declares the paused frame's variables (with types where known), so the language server stops flagging them as undefined and can complete them. Refreshed on every stop and frame change; never saved."
+        },
+        "debugNotebook.autoOpen": {
+          "type": "string",
+          "enum": [
+            "never",
+            "onFirstStop",
+            "onSessionStart"
+          ],
+          "default": "never",
+          "enumDescriptions": [
+            "Only open on demand.",
+            "Open when the debuggee first pauses (breakpoint, exception, pause).",
+            "Open as soon as the session starts."
+          ],
+          "description": "When to open a debug notebook automatically. A `debugNotebook` path in the launch configuration always opens at session start."
+        },
+        "debugNotebook.autoOpenNotebook": {
+          "type": "string",
+          "enum": [
+            "scratch",
+            "lastUsed"
+          ],
+          "default": "scratch",
+          "description": "What automatic opening (and Focus or Open with nothing open) creates: a fresh untitled notebook, or the last .dbgnb file used in this workspace."
         }
       }
     },
@@ -181,6 +242,11 @@
         "key": "ctrl+alt+enter",
         "mac": "cmd+alt+enter",
         "when": "inDebugMode && editorTextFocus"
+      },
+      {
+        "command": "debugNotebook.focusOrOpen",
+        "key": "ctrl+k n",
+        "mac": "cmd+k n"
       }
     ]
   },

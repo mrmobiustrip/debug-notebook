@@ -16,6 +16,7 @@ import { VariableService } from './notebook/VariableService';
 import { AUTO_RUN_KEY, WatchScheduler, isAutoRun } from './notebook/WatchScheduler';
 import { RunStore } from './notebook/RunStore';
 import { ScopeStubUpdater } from './notebook/ScopeStub';
+import { expressionFromDebugContext } from './notebook/DebugContext';
 import { NOTEBOOK_TYPE } from './notebook/constants';
 
 const config = () => vscode.workspace.getConfiguration('debugNotebook');
@@ -100,6 +101,89 @@ export function activate(context: vscode.ExtensionContext): void {
       return pin ? pin === state.session.name : vscode.debug.activeDebugSession?.id === state.session.id;
     });
 
+  const LAST_USED = 'lastUsedNotebook';
+  const rememberFile = (doc: vscode.NotebookDocument) => {
+    if (owns(doc) && doc.uri.scheme === 'file') {
+      void context.workspaceState.update(LAST_USED, doc.uri.toString());
+    }
+  };
+
+  /** Open the notebook the user last used, or a scratch one. */
+  const autoOpen = async (session: vscode.DebugSession | undefined, onlyIfNoneOpen: boolean): Promise<vscode.NotebookDocument | undefined> => {
+    if (onlyIfNoneOpen && vscode.workspace.notebookDocuments.some(owns)) {
+      return undefined;
+    }
+    const language = session ? languageForSessionType(session.type) : activeLanguage();
+    if (config().get<string>('autoOpenNotebook', 'scratch') === 'lastUsed') {
+      const last = context.workspaceState.get<string>(LAST_USED);
+      if (last) {
+        try {
+          const uri = vscode.Uri.parse(last);
+          await vscode.workspace.fs.stat(uri);
+          const doc = await vscode.workspace.openNotebookDocument(uri);
+          await vscode.window.showNotebookDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+          lastNotebook = doc;
+          return doc;
+        } catch {
+          // gone; fall through to scratch
+        }
+      }
+    }
+    const doc = await openScratch(language, true);
+    lastNotebook = doc;
+    return doc;
+  };
+
+  /** `"debugNotebook": "<path>"` in a launch configuration: open (creating if needed) and pin. */
+  const openLaunchNotebook = async (session: vscode.DebugSession, target: string): Promise<void> => {
+    const folder = session.workspaceFolder ?? vscode.workspace.workspaceFolders?.[0];
+    const resolved = target.replace(/\$\{workspaceFolder\}/g, folder?.uri.fsPath ?? '');
+    const uri = path.isAbsolute(resolved) ? vscode.Uri.file(resolved) : vscode.Uri.joinPath(folder?.uri ?? vscode.Uri.file(process.cwd()), resolved);
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch {
+      const empty = new DebugNotebookSerializer(() => languageForSessionType(session.type)).serializeNotebook(
+        new vscode.NotebookData([new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', languageForSessionType(session.type))]),
+      );
+      await vscode.workspace.fs.writeFile(uri, empty);
+    }
+    const doc = await vscode.workspace.openNotebookDocument(uri);
+    if (pinOf(doc) !== session.name) {
+      await setPin(doc, session.name);
+    }
+    await vscode.window.showNotebookDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+    lastNotebook = doc;
+    rememberFile(doc);
+    updatePinUi();
+  };
+
+  /** Append `text` as a new cell of the current debug notebook and run it. */
+  const appendAndRun = async (text: string, language?: string): Promise<void> => {
+    let notebook = lastNotebook ?? vscode.workspace.notebookDocuments.find(owns);
+    if (!notebook) {
+      notebook = await autoOpen(vscode.debug.activeDebugSession, false);
+      if (!notebook) {
+        return;
+      }
+    }
+    const index = notebook.cellCount;
+    const edit = new vscode.WorkspaceEdit();
+    edit.set(notebook.uri, [
+      vscode.NotebookEdit.insertCells(index, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code, text, language ?? activeLanguage())]),
+    ]);
+    await vscode.workspace.applyEdit(edit);
+    const cell = notebook.cellAt(index);
+    const range = new vscode.NotebookRange(index, index + 1);
+    const uri = notebook.uri.toString();
+    let nbEditor = vscode.window.visibleNotebookEditors.find((e) => e.notebook.uri.toString() === uri);
+    if (!nbEditor) {
+      nbEditor = await vscode.window.showNotebookDocument(notebook, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+    }
+    nbEditor.selections = [range];
+    nbEditor.revealRange(range, vscode.NotebookEditorRevealType.InCenter);
+    await controller.executeCells([cell], notebook);
+  };
+
   const watcher = new WatchScheduler(registry, {
     notebooksFor,
     isBusy: (id) => controller.isBusy(id),
@@ -125,6 +209,9 @@ export function activate(context: vscode.ExtensionContext): void {
     pinStatus,
     vscode.window.onDidChangeActiveNotebookEditor((e) => {
       trackNotebook(e);
+      if (e) {
+        rememberFile(e.notebook);
+      }
       updatePinUi();
     }),
     vscode.workspace.onDidChangeNotebookDocument((e) => {
@@ -194,28 +281,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!text.trim()) {
         return;
       }
-      let notebook = lastNotebook ?? vscode.workspace.notebookDocuments.find(owns);
-      if (!notebook) {
-        notebook = await openScratch(activeLanguage(), true);
-        lastNotebook = notebook;
-      }
       const language = editor.document.languageId === 'plaintext' ? activeLanguage() : editor.document.languageId;
-      const index = notebook.cellCount;
-      const edit = new vscode.WorkspaceEdit();
-      edit.set(notebook.uri, [
-        vscode.NotebookEdit.insertCells(index, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code, text, language)]),
-      ]);
-      await vscode.workspace.applyEdit(edit);
-      const cell = notebook.cellAt(index);
-      const range = new vscode.NotebookRange(index, index + 1);
-      const uri = notebook.uri.toString();
-      let nbEditor = vscode.window.visibleNotebookEditors.find((e) => e.notebook.uri.toString() === uri);
-      if (!nbEditor) {
-        nbEditor = await vscode.window.showNotebookDocument(notebook, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
-      }
-      nbEditor.selections = [range];
-      nbEditor.revealRange(range, vscode.NotebookEditorRevealType.InCenter);
-      await controller.executeCells([cell], notebook);
+      await appendAndRun(text, language);
     }),
 
     vscode.commands.registerCommand('debugNotebook.pinSession', async () => {
@@ -256,16 +323,57 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
 
-    vscode.debug.onDidStartDebugSession((session) => {
+    vscode.commands.registerCommand('debugNotebook.focusOrOpen', async () => {
+      const active = vscode.window.activeNotebookEditor;
+      if (active && owns(active.notebook)) {
+        // Already focused: bounce back to the text editor.
+        const text = vscode.window.visibleTextEditors.find((e) => e.document.uri.scheme !== 'vscode-notebook-cell');
+        if (text) {
+          await vscode.window.showTextDocument(text.document, { viewColumn: text.viewColumn, preserveFocus: false });
+        }
+        return;
+      }
+      const visible = vscode.window.visibleNotebookEditors.find((e) => owns(e.notebook));
+      if (visible) {
+        await vscode.window.showNotebookDocument(visible.notebook, { viewColumn: visible.viewColumn, preserveFocus: false });
+        return;
+      }
+      const open = lastNotebook ?? vscode.workspace.notebookDocuments.find(owns);
+      if (open) {
+        await vscode.window.showNotebookDocument(open, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false });
+        return;
+      }
+      await autoOpen(vscode.debug.activeDebugSession, false);
+    }),
+
+    vscode.commands.registerCommand('debugNotebook.inspectVariable', async (arg?: unknown) => {
+      const expression = expressionFromDebugContext(arg);
+      if (!expression) {
+        void vscode.window.showInformationMessage('Debug Notebook: could not determine an expression for this item.');
+        return;
+      }
+      await appendAndRun(expression);
+    }),
+
+    vscode.debug.onDidStartDebugSession(async (session) => {
       if (session.parentSession) {
         return; // child sessions (e.g. debugpy subprocess) share the notebook
       }
-      if (config().get<string>('openOnSessionStart', 'never') !== 'scratch') {
+      const fromLaunch = session.configuration.debugNotebook;
+      if (typeof fromLaunch === 'string' && fromLaunch) {
+        await openLaunchNotebook(session, fromLaunch);
         return;
       }
-      const alreadyOpen = vscode.workspace.notebookDocuments.some((d) => d.notebookType === NOTEBOOK_TYPE);
-      if (!alreadyOpen) {
-        void openScratch(languageForSessionType(session.type));
+      if (config().get<string>('autoOpen', 'never') === 'onSessionStart') {
+        await autoOpen(session, true);
+      }
+    }),
+    registry.onDidChange((state) => {
+      if (state.stopSeq !== 1 || state.terminated || state.session.parentSession) {
+        return;
+      }
+      if (config().get<string>('autoOpen', 'never') === 'onFirstStop') {
+        void autoOpen(state.session, true);
       }
     }),
   );
