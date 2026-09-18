@@ -4,15 +4,34 @@
   "description": "A notebook whose kernel is the active debug session. Cells evaluate in the selected stack frame of a paused process.",
   "version": "0.0.1",
   "publisher": "eyadnabeel",
-  "private": true,
   "license": "MIT",
-  "engines": {
-    "vscode": "^1.90.0"
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mrmobiustrip/debug-notebook.git"
   },
+  "bugs": {
+    "url": "https://github.com/mrmobiustrip/debug-notebook/issues"
+  },
+  "homepage": "https://github.com/mrmobiustrip/debug-notebook#readme",
+  "keywords": [
+    "debug",
+    "notebook",
+    "repl",
+    "debugpy",
+    "python",
+    "javascript",
+    "dataframe",
+    "matplotlib",
+    "evaluate"
+  ],
   "categories": [
     "Debuggers",
     "Notebooks"
   ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
   "activationEvents": [
     "onNotebook:debug-notebook",
     "onDebug",
@@ -259,15 +278,24 @@
     "test:py": "python3 -m unittest discover -s test/python",
     "spike": "python3 scripts/dap_spike.py",
     "test:js": "node --test 'test/js/*.test.mjs'",
-    "spike:js": "python3 scripts/js_spike.py"
+    "spike:js": "python3 scripts/js_spike.py",
+    "package": "npm run build -- --production && vsce package --no-dependencies",
+    "publish:vscode": "vsce publish --no-dependencies",
+    "publish:ovsx": "ovsx publish --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.90.0",
     "@types/vscode-notebook-renderer": "^1.72.4",
     "@vscode/debugprotocol": "^1.68.0",
+    "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.24.0",
+    "ovsx": "^1.2.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
+  },
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
   }
 }

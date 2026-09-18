@@ -1,9 +1,17 @@
 .vscode/**
+.github/**
 node_modules/**
 src/**
 test/**
 fixtures/**
+scripts/**
+docs/**
+.venv/**
 esbuild.mjs
 tsconfig.json
 vitest.config.mts
 **/*.map
+**/__pycache__/**
+*.vsix
+.gitignore
+media/icon@4x.png
